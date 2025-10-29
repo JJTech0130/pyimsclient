@@ -11,8 +11,9 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-IMEI = "356303489086965"
-USER_AGENT = "Entitlement/2.0 (iPhone) iOS/15.8.2 (19H384) Carrier Settings/50.0.2"
+IMEI = "350266804896192"
+DEVICE_NAME = "Pixel 9"
+USER_AGENT = f"Dalvik/2.1.0 (Linux; U; Android 13; {DEVICE_NAME} Build/TP1A.221005.002.B2)"
 def create_session():
     # T-Mobile only accepts 4 non-default ciphers, so we have to manually add one
     # Apparently DEFAULT by itself might work, as that is somehow different from the actual default?
@@ -34,9 +35,11 @@ def make_requests(session: requests.Session, url: str, requests: list[dict]):
     logger.debug(f"Making requests to {url} with payload: {requests}")
 
     headers = {
+        "x-generic-protocol-version": "1.0",
+        "x-generic-version": "1.0",
         "Content-Type": "application/json",
         "Accept": "application/json",
-        "x-protocol-version": "2",
+        "x-protocol-version": "1",
         "User-Agent": USER_AGENT,
         "Connection": "Keep-Alive",
         "Accept-Encoding": "gzip",
@@ -52,39 +55,44 @@ def make_requests(session: requests.Session, url: str, requests: list[dict]):
     return response.json()
 
 def authenticate(session: requests.Session, url: str, subscriber: str, challenge_cb: Callable):
-    requests = [
-        {
-            "device-account-identifier": str(uuid.uuid4()).upper(), # Not sure if this UUID matters
-            "auth-type": "EAP-AKA",
-            "action-name": "getAuthentication",
-            "subscriber-id": base64.b64encode(b'\x02\x00\x00;\x01' + subscriber.encode()).decode(),
-            "request-id": 1,
-            "unique-id": IMEI
-        }
-    ]
+    requests = [{
+            "message-id": 1,
+            "method": "3gppAuthentication",
+            "device-id": base64.b64encode(IMEI.encode()).decode(),
+            "device-type": 0,
+            "os-type": 0,
+            "device-name": DEVICE_NAME,
+            "imsi-eap": subscriber
+    }]
 
     responses = make_requests(session, url, requests)
     response = responses[0]
-    assert response['status'] == 6302
-    challenge = response['challenge']
+    assert response['response-code'] == 1003
+    challenge = response['aka-challenge']
 
     # Use the callback to process the challenge
     challenge_response = challenge_cb(challenge)
 
     requests = [{
-            "payload": challenge_response,
-            "action-name": "postChallenge",
-            "request-id": 2
+        "message-id": 1,
+        "method": "3gppAuthentication",
+        "device-id": base64.b64encode(IMEI.encode()).decode(),
+        "device-type": 0,
+        "os-type": 0,
+        "device-name": DEVICE_NAME,
+        "imsi-eap": subscriber,
+        "aka-challenge-rsp": challenge_response
     }]
 
     responses = make_requests(session, url, requests)
     response = responses[0]
-    assert response['status'] == 6000
+    assert response['response-code'] == 1000
 
-    return response['token'] # Not sure what 'app-token' is for
+    # Using the token is optional, you can just keep the session open
+    return response['aka-token']
 
 def main():
-    URL = "https://sentitlement2.mobile.att.net/"
+    URL = "https://sentitlement2.mobile.att.net/WFC"
     SUBSCRIBER = "0310280197204423@nai.epc.mnc280.mcc310.3gppnetwork.org"
     DEVICE_IP = "10.118.55.211"
 
