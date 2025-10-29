@@ -1,9 +1,12 @@
+"""
+Implementation of the protocol Android uses to talk to carrier entitlement (EAS) servers.
+Android Source: https://cs.android.com/android/platform/superproject/main/+/main:packages/modules/Wifi/service/java/com/android/server/wifi/entitlement/response/Response.java
+See main() for example usage, you must have an EAP-AKA challenge response function to use it.
+"""
 import base64
 import gzip
 import json
 import requests
-import uuid
-import random
 from typing import Callable
 from requests.adapters import HTTPAdapter
 from urllib3.util.ssl_ import create_urllib3_context

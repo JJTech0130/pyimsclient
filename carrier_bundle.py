@@ -1,5 +1,7 @@
+"""
+Download and parse Apple carrier bundles to extract carrier.plist files.
+"""
 import sys
-import json
 import plistlib
 import requests
 import zipfile
@@ -10,9 +12,7 @@ except ImportError:
     print=print
 
 
-APPLE_MASTER_PLIST_URL = (
-    "https://itunes.apple.com/WebObjects/MZStore.woa/wa/com.apple.jingle.appserver.client.MZITunesClientCheck/version?languageCode=en"
-)
+APPLE_MASTER_PLIST_URL = "https://itunes.apple.com/WebObjects/MZStore.woa/wa/com.apple.jingle.appserver.client.MZITunesClientCheck/version?languageCode=en"
 
 
 def get_master_list():

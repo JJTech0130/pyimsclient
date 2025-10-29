@@ -1,3 +1,7 @@
+"""
+Basic EAP-AKA challenge-response meant to be used with an Android app: https://github.com/JJTech0130/EAPAKAClient
+Will talk to anything that responds to EAP-AKA challenges over HTTP.
+"""
 import requests
 import logging
 

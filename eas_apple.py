@@ -1,9 +1,15 @@
+"""
+Implementation of the protocol iOS uses to talk to carrier entitlement (EAS) servers.
+Used for Wi-Fi Calling, iCloudVoWiFi, and iMessage activation.
+Reverse engineered by decompiling CommCenter on iOS 15.8.2.
+You can get the EAS server URL using carrier_bundle.py to download and parse the carrier bundle for your carrier.
+See main() for example usage, you must have an EAP-AKA challenge response function to use it.
+"""
 import base64
 import gzip
 import json
 import requests
 import uuid
-import random
 from typing import Callable
 from requests.adapters import HTTPAdapter
 from urllib3.util.ssl_ import create_urllib3_context
