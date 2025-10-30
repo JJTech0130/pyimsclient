@@ -50,7 +50,7 @@ def get_bundle_by_name(bundle_name, master_plist):
     return response.content
 
 
-def get_bundles_for_mccmnc(mccmnc, master_plist):
+def get_bundles_for_mccmnc(mccmnc, master_plist, mvno=False):
     """Return all relevant bundle names and their data for a given MCC/MNC."""
     carriers = master_plist.get("MobileDeviceCarriersByMccMnc", {})
     carrier_data = carriers.get(mccmnc)
@@ -63,10 +63,11 @@ def get_bundles_for_mccmnc(mccmnc, master_plist):
     if "BundleName" in carrier_data:
         bundles.append(carrier_data["BundleName"])
 
-    # MVNO bundles
-    for mvno in carrier_data.get("MVNOs", []):
-        if "BundleName" in mvno:
-            bundles.append(mvno["BundleName"])
+    if mvno:
+        # MVNO bundles
+        for mvno in carrier_data.get("MVNOs", []):
+            if "BundleName" in mvno:
+                bundles.append(mvno["BundleName"])
 
     return bundles or None
 
@@ -98,13 +99,14 @@ def main(argv):
         sys.exit(1)
 
     identifier = argv[1]
+    mvno = "--mvno" in argv
 
     try:
         master_plist = get_master_list()
 
         # Case 1: MCCMNC input
         if identifier.isdigit():
-            bundle_names = get_bundles_for_mccmnc(identifier, master_plist)
+            bundle_names = get_bundles_for_mccmnc(identifier, master_plist, mvno=mvno)
             if not bundle_names:
                 raise ValueError(f"No bundles found for MCC/MNC {identifier}")
 
