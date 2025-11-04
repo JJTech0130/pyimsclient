@@ -14,22 +14,17 @@ import requests
 from optparse import OptionParser
 from binascii import hexlify, unhexlify
 
-from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import dh
 from cryptography.hazmat.primitives import hashes, hmac
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
-from Crypto.Cipher import AES
+#from Crypto.Cipher import AES
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
-from smartcard.System import readers
-from smartcard.util import toHexString,toBytes
 
-from CryptoMobile.Milenage import Milenage
 
-from card.USIM import *
 
-requests.packages.urllib3.disable_warnings() 
+#requests.packages.urllib3.disable_warnings() 
 
 '''
 
@@ -676,8 +671,11 @@ class swu():
         self.socket_nat.settimeout(self.timeout)
 
     def create_socket_esp(self,client_address):
-        self.socket_esp = socket.socket(socket.AF_INET, socket.SOCK_RAW, ESP_PROTOCOL)
-        self.socket_esp.bind(client_address)    
+        # Stub using pipe
+        r, w = os.pipe()
+        self.socket_esp = w
+        # self.socket_esp = socket.socket(socket.AF_INET, socket.SOCK_RAW, ESP_PROTOCOL)
+        # self.socket_esp.bind(client_address)    
         
     def set_server(self,address):
         self.server_address = (address,self.port)
@@ -1496,117 +1494,13 @@ class swu():
 #######################################################################################################################
 
 ### USER PLANE FUNCTIONS AND INTER PROCESS COMMUNICATION ####
-
-    def exec_in_netns(self, cmd, shell=True):
-        if self.netns_name:
-            cmd = "ip netns exec %s %s" % (self.netns_name, cmd)
-        print("cmd: %s" % cmd)
-        subprocess.call(cmd, shell=shell)
-
-
     def set_routes(self):
-  
-        self.tunnel = self.open_tun(1)
-        if self.netns_name:
-            # create netns adn move the tun device into it
-            subprocess.call("ip netns add %s" % self.netns_name, shell=True)
-            subprocess.call("ip link set dev %s netns %s" % (self.tun_device, self.netns_name), shell=True)
-            # moving to netns brings device down again
-            self.exec_in_netns("ip link set dev %s up" % (self.tun_device))
-
-        if self.ip_address_list != []:
-            self.exec_in_netns("ip addr add " + self.ip_address_list[0] + "/32 dev " + self.tun_device)
-            #set host route, only  required if no netns
-            if not self.netns_name:
-                if self.default_gateway is None:
-                    self.exec_in_netns("route add " + self.server_address[0] + "/32 gw " + self.get_default_gateway_linux()[0])
-                else:
-                    self.exec_in_netns("route add " + self.server_address[0] + "/32 gw " + self.default_gateway)
-                
-            self.exec_in_netns("route add -net 0.0.0.0/1 gw " + self.ip_address_list[0])
-            self.exec_in_netns("route add -net 128.0.0.0/1 gw " + self.ip_address_list[0])
-        
-        if self.ipv6_address_list != []:
-            ipv6_address_prefix = ':'.join(self.ipv6_address_list[0].split(':')[0:4])
-            ipv6_address_identifier = 'fe80::' + ':'.join(self.ipv6_address_list[0].split(':')[4:8])
-            self.exec_in_netns("ip -6 addr add " + ipv6_address_identifier + "/64 dev " + self.tun_device)
-            self.exec_in_netns("route -A inet6 add ::/1 dev " + self.tun_device)
-            self.exec_in_netns("route -A inet6 add 8000::/1 dev " + self.tun_device)
-        
-        
-        if self.dns_address_list != [] or self.dnsv6_address_list != []:
-            if self.netns_name:
-                self.add_dir() #create directory for namespace if it doesn't exist
-                
-                with open("/etc/netns/%s/resolv.conf" % self.netns_name, "w") as file_obj:
-                    for i in self.dns_address_list:
-                        file_obj.write("nameserver %s\n" % i)
-                    for i in self.dnsv6_address_list:
-                        file_obj.write("nameserver %s\n" % i)
-            else:
-                subprocess.call("cp /etc/resolv.conf /etc/resolv.backup.conf", shell=True)  
-                subprocess.call("echo > /etc/resolv.conf", shell=True) 
-                for i in self.dns_address_list:
-                    subprocess.call("echo 'nameserver " + i +"' >> /etc/resolv.conf", shell=True)  
-                for i in self.dnsv6_address_list:
-                    subprocess.call("echo 'nameserver " + i +"' >> /etc/resolv.conf", shell=True)            
-
-    def add_dir(self):
-        if not os.path.isdir('/etc/netns'):        
-            os.mkdir('/etc/netns')
-        if not os.path.isdir('/etc/netns/' + self.netns_name):   
-            os.mkdir('/etc/netns/'  + self.netns_name)
-
+        # Fake using a pipe
+        r, w = os.pipe()
+        self.tunnel = w
      
     def delete_routes(self):
-        if self.netns_name:
-            subprocess.call("ip netns del %s" % self.netns_name, shell=True)
-        else:
-            self.exec_in_netns("route del " + self.server_address[0] + "/32", shell=True)  
-            os.close(self.tunnel) 
-            if self.dns_address_list != []:
-                subprocess.call("cp /etc/resolv.backup.conf /etc/resolv.conf", shell=True)        
-      
-
-    def get_default_source_address(self):
-    
-        proc = subprocess.Popen("/sbin/ifconfig | grep -A 1 " + get_default_gateway_linux()[1] + " | grep inet", stdout=subprocess.PIPE, shell=True)
-        output = str(proc.stdout.read())
-        if 'addr:' in output:
-            addr = output.split('addr:')[1].split()[0]
-        else:
-            addr = output.split('inet ')[1].split()[0]
-        return addr
-    
-    def get_default_gateway_linux(self):
-        """Read the default gateway directly from /proc."""
-        with open("/proc/net/route") as fh:
-            for line in fh:
-                fields = line.strip().split()
-                if fields[1] != '00000000' or not int(fields[3], 16) & 2:
-                    continue
-    
-                return socket.inet_ntoa(struct.pack("<L", int(fields[2], 16))), fields[0]
-
-
-    def open_tun(self,n):
-        TUNSETIFF = 0x400454ca
-        IFF_TUN   = 0x0001
-        IFF_TAP   = 0x0002
-        IFF_NO_PI = 0x1000 # No Packet Information - to avoid 4 extra bytes
-    
-        TUNMODE = IFF_TUN | IFF_NO_PI
-        MODE = 0
-        DEBUG = 0
-
-        self.tun_device = "tun%d" % n
-
-        f = os.open("/dev/net/tun", os.O_RDWR)
-        ifs = fcntl.ioctl(f, TUNSETIFF, struct.pack("16sH", bytes("tun%d" % n, "utf-8"), TUNMODE))
-        subprocess.call("ifconfig tun%d up" % n, shell=True) 
-    	   
-        return f
-
+        pass
 
     def esp_padding(self,length):
         padding = b''
@@ -3129,24 +3023,10 @@ class swu():
 #######################################################################################################################
 
 def get_default_gateway_linux():
-    """Read the default gateway directly from /proc."""
-    with open("/proc/net/route") as fh:
-        for line in fh:
-            fields = line.strip().split()
-            if fields[1] != '00000000' or not int(fields[3], 16) & 2:
-                continue
-           
-            return socket.inet_ntoa(struct.pack("<L", int(fields[2], 16))), fields[0]
+    return "<default_gateway_ip>", "<default_gateway_interface>"
 
 def get_default_source_address():
-
-    proc = subprocess.Popen("/sbin/ifconfig | grep -A 1 " + get_default_gateway_linux()[1] + " | grep inet", stdout=subprocess.PIPE, shell=True)
-    output = str(proc.stdout.read())
-    if 'addr:' in output:
-        addr = output.split('addr:')[1].split()[0]
-    else:
-        addr = output.split('inet ')[1].split()[0]
-    return addr
+    return "0.0.0.0"
 
 def toHex(value): # bytes hex string
     return hexlify(value).decode('utf-8')
@@ -3207,220 +3087,14 @@ def sha1_dss(data):  #for MSK
     return struct.pack('!I',h0) + struct.pack('!I',h1) + struct.pack('!I',h2) + struct.pack('!I',h3) + struct.pack('!I',h4)
 
 
-#abstraction functions
 
-def milenage_res_ck_ik(ki, op, opc, rand):
-    rand = unhexlify(rand)
-    ki = unhexlify(ki)
-    if op == None: 
-        opc = unhexlify(opc)
-        op = 16*b'\x00' #dummy since we will set opc directly
-        m = Milenage(op)
-        m.set_opc(opc)
-    else:
-        op = unhexlify(op)
-        m = Milenage(op)
-    res, ck, ik, ak = m.f2345(ki, rand)
-    return hexlify(res), hexlify(ck), hexlify(ik)
-
-
-def byte_xor(ba1, ba2):
-    return bytes([_a ^ _b for _a, _b in zip(ba1, ba2)])
-
-def return_auts(rand, autn,ki,op,opc,sqn):
-    rand = unhexlify(rand)
-    ki = unhexlify(ki)
-    autn = unhexlify(autn)
-    sqn = unhexlify(sqn)
-    if op == None: 
-        opc = unhexlify(opc)
-        op = 16*b'\x00' #dummy since we will set opc directly
-        m = Milenage(op)
-        m.set_opc(opc)
-    else:
-        op = unhexlify(op)
-        m = Milenage(op)
-    macs = m.f1star(ki,rand,sqn,b'\x00\x00')
-    ak = m.f5star(ki,rand)
-    ak_xor_sqn = byte_xor(ak, sqn)
-    return  ak_xor_sqn + macs
 
 
 def return_imsi(serial_interface_or_reader_index):
-    try:
-        return read_imsi_2(serial_interface_or_reader_index)
-    except:
-        try:
-            return get_imsi(serial_interface_or_reader_index)
-        except:
-            try:
-                return https_imsi(serial_interface_or_reader_index)
-            except:
-                print('Unable to access serial port/smartcard reader/server. Using DEFAULT IMSI: ' + DEFAULT_IMSI)
-                return DEFAULT_IMSI
+    return https_imsi(serial_interface_or_reader_index)
         
 def return_res_ck_ik(serial_interface_or_reader_index, rand, autn, ki, op, opc):
-    if ki is not None and (op is not None or opc is not None):
-        try:
-            return milenage_res_ck_ik(ki, op, opc, rand)
-        except:
-            print('Unable to calculate Milenage RES/CK/IK. Check KI, OP or OPC. Using DEFAULT RES, CK and IK')
-            return DEFAULT_RES, DEFAULT_CK, DEFAULT_IK
-    else:
-        try:
-            return read_res_ck_ik_2(serial_interface_or_reader_index, rand, autn)
-        except:
-            try:        
-                return get_res_ck_ik(serial_interface_or_reader_index, rand, autn)
-            except:
-                try:
-                    return https_res_ck_ik(serial_interface_or_reader_index, rand, autn)
-                except:
-                    print('Unable to access serial port/smartcard reader/server. Using DEFAULT RES, CK and IK')
-                    return DEFAULT_RES, DEFAULT_CK, DEFAULT_IK
-
-
-
-
-def get_imsi(serial_interface):
-
-    imsi = None
-    
-    ser = serial.Serial(serial_interface,38400, timeout=0.5,xonxoff=True, rtscts=True, dsrdtr=True, exclusive =True)
-
-    CLI = []
-    CLI.append('AT+CIMI\r\n')
-    
-    a = time.time()
-    for i in range(len(CLI)):
-        ser.write(CLI[i].encode())
-        buffer = ''
-
-        while "OK\r\n" not in buffer and "ERROR\r\n" not in buffer:
-            buffer +=  ser.read().decode("utf-8")
-            
-            if time.time()-a > 0.5:
-                ser.write(CLI[i].encode())
-                a = time.time() +1
-            
-        if i==0:    
-            for m in buffer.split('\r\n'):
-                if len(m) == 15:
-                    imsi = m
-         
-    ser.close()
-    return imsi
-
-
-def get_res_ck_ik(serial_interface, rand, autn):
-    res = None
-    ck = None
-    ik = None
-    
-    ser = serial.Serial(serial_interface,38400, timeout=0.5,xonxoff=True, rtscts=True, dsrdtr=True, exclusive =True)
-
-    CLI = []
-   
-    #CLI.append('AT+CRSM=178,12032,1,4,0\r\n')
-    CLI.append('AT+CSIM=14,"00A40000023F00"\r\n')
-    CLI.append('AT+CSIM=14,"00A40000022F00"\r\n')
-    CLI.append('AT+CSIM=42,"00A4040010A0000000871002FFFFFFFF8903050001"\r\n')
-    CLI.append('AT+CSIM=78,\"008800812210' + rand.upper() + '10' + autn.upper() + '\"\r\n')
-
-    a = time.time()
-    for i in CLI:
-        ser.write(i.encode())
-        buffer = ''
-    
-        while "OK" not in buffer and "ERROR" not in buffer:
-            buffer +=  ser.read().decode("utf-8")
-        
-            if time.time()-a > 0.5:
-                ser.write(i.encode())
-
-                a = time.time() + 1
-                
-    for i in buffer.split('"'):
-        if len(i)==4:
-            if i[0:2] == '61':
-                len_result = i[-2:]
-    
-    LAST_CLI = 'AT+CSIM=10,"00C00000' + len_result + '\"\r\n'
-    ser.write(LAST_CLI.encode())
-    buffer = ''
-    
-    while "OK\r\n" not in buffer and "ERROR\r\n" not in buffer:
-        buffer +=  ser.read().decode("utf-8")
-        
-    for result in buffer.split('"'):
-        if len(result) > 10:
-        
-
-            res = result[4:20]
-            ck = result[22:54]
-            ik = result[56:88]
-    
-    ser.close()    
-    return res, ck, ik
-    
-
-#reader functions
-def bcd(chars):
-    bcd_string = ""
-    for i in range(len(chars) // 2):
-        bcd_string += chars[1+2*i] + chars[2*i]
-    return bcd_string
-
-def read_imsi(reader_index):
-    imsi = None
-    r = readers()
-    connection = r[int(reader_index)].createConnection()
-    connection.connect()
-    data, sw1, sw2 = connection.transmit(toBytes('00A40000023F00'))     
-    data, sw1, sw2 = connection.transmit(toBytes('00A40000027F20'))
-    data, sw1, sw2 = connection.transmit(toBytes('00A40000026F07'))
-    data, sw1, sw2 = connection.transmit(toBytes('00B0000009'))  
-    result = toHexString(data).replace(" ","")
-    imsi = bcd(result)[-15:]
-    
-    return imsi
-
-def read_res_ck_ik(reader_index, rand, autn):
-    res = None
-    ck = None
-    ik = None
-    r = readers()
-    connection = r[int(reader_index)].createConnection()
-    connection.connect()
-    data, sw1, sw2 = connection.transmit(toBytes('00A40000023F00'))    
-    data, sw1, sw2 = connection.transmit(toBytes('00A40000022F00')) 
-    data, sw1, sw2 = connection.transmit(toBytes('00A4040010A0000000871002FFFFFFFF8903050001'))   
-    data, sw1, sw2 = connection.transmit(toBytes('008800812210' + rand.upper() + '10' + autn.upper()))   
-    if sw1 == 97:
-        data, sw1, sw2 = connection.transmit(toBytes('00C00000') + [sw2])         
-        result = toHexString(data).replace(" ", "")
-        res = result[4:20]
-        ck = result[22:54]
-        ik = result[56:88]          
-
-    return res, ck, ik
-
-#reader functions - more generic using card module
-def read_imsi_2(reader_index): #prepared for AUTS
-    a = USIM(int(reader_index))
-    print(a.get_imsi())
-    return a.get_imsi()
-    
-def read_res_ck_ik_2(reader_index,rand,autn):
-    a = USIM(int(reader_index))
-    x = a.authenticate(RAND=toBytes(rand), AUTN=toBytes(autn))
-    if len(x) == 1: #AUTS goes in RES position
-        return toHexString(x[0]).replace(" ", ""), None, None
-    elif len(x) > 2:
-        return toHexString(x[0]).replace(" ", ""),toHexString(x[1]).replace(" ", ""),toHexString(x[2]).replace(" ", "") 
-    else:
-        return None, None, None
-
+    return https_res_ck_ik(serial_interface_or_reader_index, rand, autn)
 
 #https functions
 def https_imsi(server):
