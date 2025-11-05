@@ -8,7 +8,8 @@ import sys
 import os
 import fcntl
 import subprocess
-import multiprocessing
+#import multiprocessing
+import multiprocess as multiprocessing
 import requests
 
 from optparse import OptionParser
@@ -21,7 +22,8 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 #from Crypto.Cipher import AES
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
-
+import ipsec.eap
+from ._const import *
 
 
 #requests.packages.urllib3.disable_warnings() 
@@ -35,347 +37,6 @@ IPsec_encoder (receives data from tunnel interface -> encrypts and sends it towa
 IPsec_decoder (receives encrypted data from server/epdg -> decypts it and sends it to the tunnel interface)
 
 '''
-
-INTER_PROCESS_CREATE_SA = 1
-INTER_PROCESS_UPDATE_SA = 2
-INTER_PROCESS_DELETE_SA = 3
-INTER_PROCESS_IKE       = 4
-
-INTER_PROCESS_IE_ENCR_ALG    = 1
-INTER_PROCESS_IE_INTEG_ALG   = 2
-INTER_PROCESS_IE_ENCR_KEY    = 3
-INTER_PROCESS_IE_INTEG_KEY   = 4
-INTER_PROCESS_IE_SPI_INIT    = 5
-INTER_PROCESS_IE_SPI_RESP    = 6
-INTER_PROCESS_IE_IKE_MESSAGE = 7
-
-
-#DEFAULTs
-
-DEFAULT_IKE_PORT = 500
-DEFAULT_IKE_NAT_TRAVERSAL_PORT = 4500
-
-DEFAULT_SERVER = '1.2.3.4'
-
-DEFAULT_COM = '/dev/ttyUSB2'
-DEFAULT_IMSI = '123456012345678'
-DEFAULT_MCC = '123'
-DEFAULT_MNC = '456'
-DEFAULT_APN = 'internet'
-DEFAULT_TIMEOUT_UDP = 2
-#DEFAULT_TIMEOUT_UDP_NAT_TRANSVERSAL = 2
-
-DEFAULT_CK = '0123456789ABCDEF0123456789ABCDEF'
-DEFAULT_IK = '0123456789ABCDEF0123456789ABCDEF'
-DEFAULT_RES = '0123456789ABCDEF'
-
-
-
-
-NONE = 0
-
-#IKEv2 Payload Types
-SA =      33
-KE =      34
-IDI =     35
-IDR =     36 
-CERT =    37
-CERTREQ = 38
-AUTH =    39
-NINR =    40
-N =       41
-D =       42
-V =       43
-TSI =     44
-TSR =     45
-SK =      46
-CP =      47 
-EAP =     48
-
-#IKEv2 Exchange Types
-IKE_SA_INIT =     34
-IKE_AUTH =        35
-CREATE_CHILD_SA = 36
-INFORMATIONAL =   37
-
-RESERVED = 0
-IKE = 1
-AH =  2
-ESP = 3   
-
-#Transform Type Values
-ENCR = 1
-PRF = 2
-INTEG = 3
-D_H = 4
-ESN = 5
-
-
-#Transform Type 1 - Encryption Algorithm Transform IDs
-ENCR_DES_IV64 =    1
-ENCR_DES=          2
-ENCR_3DES =        3
-ENCR_RC5 =         4
-ENCR_IDEA =        5
-ENCR_CAST =        6
-ENCR_BLOWFISH =    7
-ENCR_3IDEA =       8
-ENCR_DES_IV32 =    9
-ENCR_NULL =       11 #Not allowed
-ENCR_AES_CBC =    12
-ENCR_AES_CTR =    13
-ENCR_AES_CCM_8 =  14
-ENCR_AES_CCM_12 = 15
-ENCR_AES_CCM_16 = 16
-ENCR_AES_GCM_8 =  18
-ENCR_AES_GCM_12 = 19
-ENCR_AES_GCM_16 = 20
-
-#Transform Type 2 - Pseudorandom Function Transform IDs
-PRF_HMAC_MD5 =          1
-PRF_HMAC_SHA1 =         2
-PRF_HMAC_TIGER =        3
-PRF_AES128_XCBC =       4
-PRF_HMAC_SHA2_256 =     5
-PRF_HMAC_SHA2_384 =     6
-PRF_HMAC_SHA2_512 =     7
-PRF_AES128_CMAC =       8
-
-#Transform Type 3 - Integrity Algorithm Transform IDs
-NONE =                      0
-AUTH_HMAC_MD5_96 =	        1
-AUTH_HMAC_SHA1_96 =         2
-AUTH_DES_MAC =	            3
-AUTH_KPDK_MD5 =             4
-AUTH_AES_XCBC_96 =          5
-AUTH_HMAC_MD5_128 =         6
-AUTH_HMAC_SHA1_160 =        7
-AUTH_AES_CMAC_96 =          8
-AUTH_AES_128_GMAC =         9
-AUTH_AES_192_GMAC =        10
-AUTH_AES_256_GMAC =        11
-AUTH_HMAC_SHA2_256_128 =   12
-AUTH_HMAC_SHA2_384_192 =   13
-AUTH_HMAC_SHA2_512_256 =   14
-
-#Transform Type 4 - Diffie-Hellman Group Transform IDs
-MODP_768_bit =          1
-MODP_1024_bit =         2
-MODP_1536_bit =         5
-MODP_2048_bit =        14
-MODP_3072_bit =        15
-MODP_4096_bit =        16
-MODP_6144_bit =        17
-MODP_8192_bit =        18
-
-
-ESN_NO_ESN = 0
-ESN_ESN =    1
-
-TLV = 0
-TV =  1
-
-#IKEv2 Transform Attribute Types
-KEY_LENGTH = (14, TV)
-
-
-#states
-OK =                            0
-TIMEOUT =                       1
-REPEAT_STATE =                  2
-DECODING_ERROR =                3
-MANDATORY_INFORMATION_MISSING = 4
-OTHER_ERROR =                   5
-REPEAT_STATE_COOKIE =           6
-
-
-#IKEv2 Notify Message Types - Error Types
-UNSUPPORTED_CRITICAL_PAYLOAD            =     1
-INVALID_IKE_SPI                         =     4
-INVALID_MAJOR_VERSION                   =     5
-INVALID_SYNTAX                          =     7
-INVALID_MESSAGE_ID                      =     9
-INVALID_SPI                             =    11
-NO_PROPOSAL_CHOSEN                      =    14
-INVALID_KE_PAYLOAD                      =    17
-AUTHENTICATION_FAILED                   =    24
-SINGLE_PAIR_REQUIRED                    =    34
-NO_ADDITIONAL_SAS                       =    35
-INTERNAL_ADDRESS_FAILURE                =    36
-FAILED_CP_REQUIRED                      =    37
-TS_UNACCEPTABLE                         =    38
-INVALID_SELECTORS                       =    39
-TEMPORARY_FAILURE                       =    43
-CHILD_SA_NOT_FOUND                      =    44
-# from 24.302                                        
-PDN_CONNECTION_REJECTION                =  8192
-MAX_CONNECTION_REACHED                  =  8193
-SEMANTIC_ERROR_IN_THE_TFT_OPERATION     =  8241
-SYNTACTICAL_ERROR_IN_THE_TFT_OPERATION  =  8242
-SEMANTIC_ERRORS_IN_PACKET_FILTERS       =  8244
-SYNTACTICAL_ERRORS_IN_PACKET_FILTERS    =  8245
-NON_3GPP_ACCESS_TO_EPC_NOT_ALLOWED      =  9000
-USER_UNKNOWN                            =  9001
-NO_APN_SUBSCRIPTION                     =  9002
-AUTHORIZATION_REJECTED                  =  9003
-ILLEGAL_ME                              =  9006
-NETWORK_FAILURE                         = 10500
-RAT_TYPE_NOT_ALLOWED                    = 11001
-IMEI_NOT_ACCEPTED                       = 11005
-PLMN_NOT_ALLOWED                        = 11011
-UNAUTHENTICATED_EMERGENCY_NOT_SUPPORTED = 11055
-
-#IKEv2 Notify Message Types - Status Types
-INITIAL_CONTACT                         = 16384
-SET_WINDOW_SIZE                         = 16385
-ADDITIONAL_TS_POSSIBLE                  = 16386
-IPCOMP_SUPPORTED                        = 16387      
-NAT_DETECTION_SOURCE_IP                 = 16388      
-NAT_DETECTION_DESTINATION_IP            = 16389
-COOKIE                                  = 16390
-USE_TRANSPORT_MODE                      = 16391
-HTTP_CERT_LOOKUP_SUPPORTED              = 16392
-REKEY_SA                                = 16393
-ESP_TFC_PADDING_NOT_SUPPORTED           = 16394
-NON_FIRST_FRAGMENTS_ALSO                = 16395
-
-EAP_ONLY_AUTHENTICATION                 = 16417
-# from 24.302                                        
-REACTIVATION_REQUESTED_CAUSE            = 40961
-BACKOFF_TIMER                           = 41041
-PDN_TYPE_IPv4_ONLY_ALLOWED              = 41050
-PDN_TYPE_IPv6_ONLY_ALLOWED              = 41051
-DEVICE_IDENTITY                         = 41101
-EMERGENCY_SUPPORT                       = 41112
-EMERGENCY_CALL_NUMBERS                  = 41134
-NBIFOM_GENERIC_CONTAINER                = 41288
-P_CSCF_RESELECTION_SUPPORT              = 41304
-PTI                                     = 41501
-IKEV2_MULTIPLE_BEARER_PDN_CONNECTIVITY  = 42011
-EPS_QOS                                 = 42014
-EXTENDED_EPS_QOS                        = 42015
-TFT                                     = 42017
-MODIFIED_BEARER                         = 42020
-APN_AMBR                                = 42094
-EXTENDED_APN_AMBR                       = 42095
-N1_MODE_CAPABILITY                      = 51015
-
-#IKEv2 Authenticaton Method
-RSA_DIGITAL_SIGNATURE             = 1
-SHARED_KEY_MESSAGE_INTEGRITY_CODE = 2
-DSS_DIGITAL_SIGNATURE             = 3
-
-#IKEv2 Traffic Selector Types
-TS_IPV4_ADDR_RANGE = 7
-TS_IPV6_ADDR_RANGE = 8
-
-#IP protocol_id
-ANY =   0
-TCP =   6
-UDP =  17
-ICMP =  1
-ESP_PROTOCOL = 50
-
-NAT_TRAVERSAL = 4500
-
-#IKEv2 Configuration Payload CFG Types
-CFG_REQUEST =       1
-CFG_REPLY =         2
-CFG_SET =           3
-CFG_ACK =           4
-
-# IKEv2 Configuration Payload Attribute Types (num, length) None = more
-INTERNAL_IP4_ADDRESS	           = 1
-INTERNAL_IP4_NETMASK	           = 2
-INTERNAL_IP4_DNS	               = 3
-INTERNAL_IP4_NBNS	               = 4
-INTERNAL_IP4_DHCP		           = 6
-APPLICATION_VERSION		           = 7
-INTERNAL_IP6_ADDRESS	           = 8
-INTERNAL_IP6_DNS	               = 10
-INTERNAL_IP6_DHCP	               = 12
-INTERNAL_IP4_SUBNET	               = 13
-SUPPORTED_ATTRIBUTES	           = 14
-INTERNAL_IP6_SUBNET	               = 15
-MIP6_HOME_PREFIX	               = 16
-INTERNAL_IP6_LINK	               = 17
-INTERNAL_IP6_PREFIX	               = 18
-HOME_AGENT_ADDRESS	               = 19
-P_CSCF_IP4_ADDRESS	               = 20
-P_CSCF_IP6_ADDRESS	               = 21
-FTT_KAT		                       = 22
-EXTERNAL_SOURCE_IP4_NAT_INFO       = 23
-TIMEOUT_PERIOD_FOR_LIVENESS_CHECK  = 24
-INTERNAL_DNS_DOMAIN	               = 25
-INTERNAL_DNSSEC_TA                 = 26
-
-#IKEv2 Identification Payload ID Types
-ID_IPV4_ADDR     = 1
-ID_FQDN	         = 2
-ID_RFC822_ADDR	 = 3
-ID_IPV6_ADDR	 = 5
-ID_DER_ASN1_DN	 = 9
-ID_DER_ASN1_GN	 = 10
-ID_KEY_ID	     = 11
-ID_FC_NAME	     = 12
-ID_NULL	         = 13
-
-
-
-
-#EAP COde type
-EAP_REQUEST  = 1
-EAP_RESPONSE = 2
-EAP_SUCCESS  = 3
-EAP_FAILURE  = 4
-
-#IANA EAP Type
-EAP_AKA = 23
-
-#EAP-AKA/EAP-SIM Subtypes:
-AKA_Challenge = 1
-AKA_Authentication_Reject = 2
-AKA_Synchronization_Failure = 4
-AKA_Identity = 5
-SIM_Start = 10
-SIM_Challenge = 11
-AKA_Notification = 12
-SIM_Notification = 12
-AKA_Reauthentication = 13
-SIM_Reauthentication = 13
-AKA_Client_Error = 14
-SIM_Client_Error = 14
-
-#EAP-AKA/EAP-SIM Atrributes:
-AT_RAND = 1
-AT_AUTN = 2
-AT_RES = 3
-AT_AUTS = 4
-AT_PADDING = 6
-AT_NONCE_MT = 7
-AT_PERMANENT_ID_REQ = 10
-AT_MAC = 11
-AT_NOTIFICATION = 12
-AT_ANY_ID_REQ = 13
-AT_IDENTITY = 14
-AT_VERSION_LIST = 15
-AT_SELECTED_VERSION = 16
-AT_FULLAUTH_ID_REQ = 17
-AT_COUNTER = 19
-AT_COUNTER_TOO_SMALL = 20
-AT_NONCE_S = 21
-AT_CLIENT_ERROR_CODE = 22
-AT_IV = 129
-AT_ENCR_DATA = 130
-AT_NEXT_PSEUDONYM = 132
-AT_NEXT_REAUTH_ID = 133
-AT_CHECKCODE = 134
-AT_RESULT_IND = 135
-
-
-# Role
-ROLE_INITIATOR = 1
-ROLE_RESPONDER = 0
 
 
 class swu():
@@ -727,7 +388,7 @@ class swu():
             8192: 0xffffffffffffffffc90fdaa22168c234c4c6628b80dc1cd129024e088a67cc74020bbea63b139b22514a08798e3404ddef9519b3cd3a431b302b0a6df25f14374fe1356d6d51c245e485b576625e7ec6f44c42e9a637ed6b0bff5cb6f406b7edee386bfb5a899fa5ae9f24117c4b1fe649286651ece45b3dc2007cb8a163bf0598da48361c55d39a69163fa8fd24cf5f83655d23dca3ad961c62f356208552bb9ed529077096966d670c354e4abc9804f1746c08ca18217c32905e462e36ce3be39e772c180e86039b2783a2ec07a28fb5c55df06f4c52c9de2bcbf6955817183995497cea956ae515d2261898fa051015728e5a8aaac42dad33170d04507a33a85521abdf1cba64ecfb850458dbef0a8aea71575d060c7db3970f85a6e1e4c7abf5ae8cdb0933d71e8c94e04a25619dcee3d2261ad2ee6bf12ffa06d98a0864d87602733ec86a64521f2b18177b200cbbe117577a615d6c770988c0bad946e208e24fa074e5ab3143db5bfce0fd108e4b82d120a92108011a723c12a787e6d788719a10bdba5b2699c327186af4e23c1a946834b6150bda2583e9ca2ad44ce8dbbbc2db04de8ef92e8efc141fbecaa6287c59474e6bc05d99b2964fa090c3a2233ba186515be7ed1f612970cee2d7afb81bdd762170481cd0069127d5b05aa993b4ea988d8fddc186ffb7dc90a6c08f4df435c93402849236c3fab4d27c7026c1d4dcb2602646dec9751e763dba37bdf8ff9406ad9e530ee5db382f413001aeb06a53ed9027d831179727b0865a8918da3edbebcf9b14ed44ce6cbaced4bb1bdb7f1447e6cc254b332051512bd7af426fb8f401378cd2bf5983ca01c64b92ecf032ea15d1721d03f482d7ce6e74fef6d55e702f46980c82b5a84031900b1c9e59e7c97fbec7e8f323a97a7e36cc88be0f1d45b7ff585ac54bd407b22b4154aacc8f6d7ebf48e1d814cc5ed20f8037e0a79715eef29be32806a1d58bb7c5da76f550aa3d8a1fbff0eb19ccb1a313d55cda56c9ec2ef29632387fe8d76e3c0468043e8f663f4860ee12bf2d5b0b7474d6e694f91e6dbe115974a3926f12fee5e438777cb6a932df8cd8bec4d073b931ba3bc832b68d9dd300741fa7bf8afc47ed2576f6936ba424663aab639c5ae4f5683423b4742bf1c978238f16cbe39d652de3fdb8befc848ad922222e04a4037c0713eb57a81a23f0c73473fc646cea306b4bcbc8862f8385ddfa9d4b7fa2c087e879683303ed5bdd3a062b3cf5b3a278a66d2a13f83f44f82ddf310ee074ab6a364597e899a0255dc164f31cc50846851df9ab48195ded7ea1b1d510bd7ee74d73faf36bc31ecfa268359046f4eb879f924009438b481c6cd7889a002ed5ee382bc9190da6fc026e479558e4475677e9aa9e3050e2765694dfc81f56e880b96e7160c980dd98edd3dfffffffffffffffff            
         }    
         g = 2        
-        self.pn = dh.DHParameterNumbers(prime.get(key_size),g)
+        self.pn = dh.DHParameterNumbers(prime[key_size],g)
         parameters = self.pn.parameters()
         self.dh_private_key = parameters.generate_private_key()
         self.dh_public_key_bytes = self.dh_private_key.public_key().public_numbers().y.to_bytes(key_size//8,'big')
@@ -742,123 +403,11 @@ class swu():
         
         
     def get_identity(self):
-            imsi = return_imsi(self.com_port)
+            imsi = https_imsi(self.com_port)
             self.imsi = imsi
             self.set_identification(IDI,ID_RFC822_ADDR,'0' + self.imsi + '@nai.epc.mnc' + self.mnc + '.mcc' + self.mcc + '.3gppnetwork.org')
     
-    def encode_eap_at_identity(self, identity):
-        """ Returns the EAP AT Identity as bytes """
-        # 4 bytes -> header (type, at_len, identity_len)
-        full_len = 4 + len(identity)
-        at_len = int(full_len / 4)
-        pad = 0
-        if full_len % 4:
-            pad = 4 - (full_len % 4)
-            at_len += 1
-        # 0e -> AT_IDENTITY
-        eap_at_identity = (bytes([0x0e, at_len])
-                + struct.pack('>H', len(identity))
-                + identity.encode("utf-8")
-                + pad * b'\x00')
-        return eap_at_identity
-        
-    def eap_keys_calculation(self,ck, ik):
-        identity = self.identification_initiator[1].encode('utf-8') #idi value
-        digest = hashes.Hash(hashes.SHA1())
-        digest.update(identity + ik + ck)
-        MK = digest.finalize()
-        print('MK',toHex(MK))
-        
-        result = b''
-        xval = MK
-        modulus = pow(2,160)
-        
-        for i in range(4):
-            w0 = sha1_dss(xval)
-            xval = ((int.from_bytes(xval,'big') + int.from_bytes(w0, 'big') + 1 ) % modulus).to_bytes(20,'big')
-            w1 = sha1_dss(xval)
-            xval = ((int.from_bytes(xval,'big') + int.from_bytes(w1, 'big') + 1 ) % modulus).to_bytes(20,'big')
-            
-            result += w0 + w1
-
-        # return     
-        return result[0:16],result[16:32],result[32:96],result[96:160],MK
-        
-        
-    def eap_keys_calculation_fast_reauth(self,counter, nonce_s):
-        identity = self.identification_initiator[1].encode('utf-8') #idi value
-        digest = hashes.Hash(hashes.SHA1())
-        digest.update(identity + struct.pack('!H',counter) + nonce_s + self.MK)
-        XKEY = digest.finalize()
-        print('XKEY',toHex(XKEY))
-        
-        result = b''
-        xval = XKEY
-        modulus = pow(2,160)
-        
-        for i in range(4):
-            w0 = sha1_dss(xval)
-            xval = ((int.from_bytes(xval,'big') + int.from_bytes(w0, 'big') + 1 ) % modulus).to_bytes(20,'big')
-            w1 = sha1_dss(xval)
-            xval = ((int.from_bytes(xval,'big') + int.from_bytes(w1, 'big') + 1 ) % modulus).to_bytes(20,'big')
-            
-            result += w0 + w1
-
-        # return     
-        return result[0:64],result[64:128],XKEY        
-        
-    def build_eap_aka_response(self, eap_identifier, res):
-        """
-        Build EAP-AKA Response payload with proper length calculation and padding.
-        
-        Args:
-            eap_identifier: EAP packet identifier
-            res: RES value (4-16 bytes according to 3GPP standard)
-            
-        Returns:
-            Complete EAP-AKA response payload with proper length and padding
-        """
-        # Validate RES length (must be 4-16 bytes according to 3GPP TS 33.102)
-        res_len = len(res)
-        if res_len < 4 or res_len > 16:
-            raise ValueError(f"RES length must be between 4-16 bytes, got {res_len}")
-        
-        # EAP-AKA fixed parts
-        eap_code = bytes([2])  # Response
-        eap_id = bytes([eap_identifier])
-        eap_aka_header = fromHex('1701000003030040')  # EAP-AKA Challenge Response header
-        eap_aka_header = fromHex('1701000003')  # EAP-AKA Challenge Response header
-        eap_res_bit_len = struct.pack('!H', res_len * 8)
-        at_mac_header = fromHex('0b050000')  # AT_MAC attribute header (16 bytes follow)
-        
-        # Calculate payload length before MAC
-        # Structure: Code(1) + ID(1) + Length(2) + EAP-AKA Header(8) + RES(var) + AT_MAC(20)
-        base_length = 1 + 1 + 2 + len(eap_aka_header) + 3 + res_len + len(at_mac_header) + 16
-        
-        # EAP-AKA payloads must be multiples of 4 bytes - add padding if needed
-        padding_needed = (4 - (base_length % 4)) % 4
-        eap_res_4bytes_len = struct.pack('!B', (res_len + padding_needed) // 4 + 1)
-        padding = bytes(padding_needed)
-        
-        # Final length including padding
-        total_length = base_length + padding_needed
-        
-        # Build length field (2 bytes, big endian)
-        length_bytes = struct.pack('!H', total_length)
-        
-        # Construct payload without MAC (MAC placeholder is 16 zero bytes)
-        eap_payload_response = (eap_code + 
-                              eap_id + 
-                              length_bytes + 
-                              eap_aka_header + 
-                              eap_res_4bytes_len + 
-                              eap_res_bit_len + 
-                              res + 
-                              padding +  # Add padding after RES if needed
-                              at_mac_header + 
-                              bytes(16))  # MAC placeholder
-        
-        return eap_payload_response
+    
         
 #######################################################################################################################
 #######################################################################################################################
@@ -2276,6 +1825,7 @@ class swu():
                             if (RAND is not None and AUTN is not None) or (VECTOR is not None and ENCR_DATA is not None):
                                 if RAND is not None and AUTN is not None:
                                     if self.sqn is not None and retry == False:
+                                        raise Exception('Cannot process wat')
                                         auts = return_auts(toHex(RAND), toHex(AUTN),self.ki,self.op,self.opc, self.sqn)
                                         eap_payload_response = bytes([2]) + bytes([self.eap_identifier]) + fromHex('0018170400000404') + auts
                                         self.eap_payload_response = eap_payload_response
@@ -2287,7 +1837,7 @@ class swu():
                                         print('AUTN',toHex(AUTN))
                                         print('MAC',toHex(MAC))
                                         
-                                        res,ck,ik = return_res_ck_ik(self.com_port,toHex(RAND),toHex(AUTN),self.ki,self.op,self.opc)
+                                        res,ck,ik = https_res_ck_ik(self.com_port,toHex(RAND),toHex(AUTN))
                                         
                                         if res is not None and ck is None and ik is None:
                                             #RES is AUTS
@@ -2304,14 +1854,15 @@ class swu():
                                             print('IK',ik)
                                         
                                             self.RES, CK, IK = fromHex(res), fromHex(ck), fromHex(ik)
-                                            self.KENCR, self.KAUT, self.MSK, self.EMSK, self.MK = self.eap_keys_calculation(CK,IK)
+                                            idi = self.identification_initiator[1]
+                                            self.KENCR, self.KAUT, self.MSK, self.EMSK, self.MK = ipsec.eap.eap_keys_calculation(idi, CK,IK)
                                             print('KENCR',toHex(self.KENCR))
                                             print('KAUT',toHex(self.KAUT))
                                             print('MSK',toHex(self.MSK))
                                             print('EMSK',toHex(self.EMSK))
                                         
                                             # Calculate dynamic EAP payload with proper padding
-                                            eap_payload_response = self.build_eap_aka_response(self.eap_identifier, self.RES)
+                                            eap_payload_response = ipsec.eap.build_eap_aka_response(self.eap_identifier, self.RES)
                                         
                                             h = hmac.HMAC(self.KAUT,hashes.SHA1())
                                             h.update(eap_payload_response)
@@ -2356,7 +1907,8 @@ class swu():
                                                 
                                                                             
                                         #XKEY' = SHA1(Identity|counter|NONCE_S| MK)
-                                        self.MSK, self.EMSK, self.XKEY = self.eap_keys_calculation_fast_reauth(COUNTER, NONCE_S)
+                                        idi = self.identification_initiator[1]
+                                        self.MSK, self.EMSK, self.XKEY = ipsec.eap.eap_keys_calculation_fast_reauth(idi, self.MK, COUNTER, NONCE_S)
                                         print('MSK',toHex(self.MSK))
                                         print('EMSK',toHex(self.EMSK))                     
                                         
@@ -2405,7 +1957,7 @@ class swu():
                                         bytes([2])
                                         + bytes([self.eap_identifier])
                                         + fromHex("004417050000")
-                                        + self.encode_eap_at_identity(identity))
+                                        + ipsec.eap.encode_eap_at_identity(identity))
 
                                 # update the EAP length
                                 eap = bytearray(self.eap_payload_response)
@@ -2491,20 +2043,21 @@ class swu():
                                     print('AUTN',toHex(AUTN))
                                     print('MAC',toHex(MAC))
                                     
-                                    res,ck,ik = return_res_ck_ik(self.com_port,toHex(RAND),toHex(AUTN),self.ki,self.op,self.opc)
+                                    res,ck,ik = https_res_ck_ik(self.com_port,toHex(RAND),toHex(AUTN))
                                     print('RES',res)
                                     print('CK',ck)
                                     print('IK',ik)
                                     
                                     self.RES, CK, IK = fromHex(res), fromHex(ck), fromHex(ik)
-                                    self.KENCR, self.KAUT, self.MSK, self.EMSK, self.MK = self.eap_keys_calculation(CK,IK)
+                                    idi = self.identification_initiator[1]
+                                    self.KENCR, self.KAUT, self.MSK, self.EMSK, self.MK = ipsec.eap.eap_keys_calculation(idi, CK,IK)
                                     print('KENCR',toHex(self.KENCR))
                                     print('KAUT',toHex(self.KAUT))
                                     print('MSK',toHex(self.MSK))
                                     print('EMSK',toHex(self.EMSK))
                                     
                                     # Calculate dynamic EAP payload with proper padding
-                                    eap_payload_response = self.build_eap_aka_response(self.eap_identifier, self.RES)
+                                    eap_payload_response = ipsec.eap.build_eap_aka_response(self.eap_identifier, self.RES)
                                     
                                     h = hmac.HMAC(self.KAUT,hashes.SHA1())
                                     h.update(eap_payload_response)
@@ -3011,81 +2564,12 @@ class swu():
            
         
 
-#######################################################################################################################
-#######################################################################################################################
-#######################################################################################################################
-#######################################################################################################################
-#######################################################################################################################
-#######################################################################################################################
-#######################################################################################################################
-#######################################################################################################################
-#######################################################################################################################
-#######################################################################################################################
-
-def get_default_gateway_linux():
-    return "<default_gateway_ip>", "<default_gateway_interface>"
-
-def get_default_source_address():
-    return "0.0.0.0"
-
 def toHex(value): # bytes hex string
     return hexlify(value).decode('utf-8')
 
 def fromHex(value): # hex string to bytes
     return unhexlify(value)
     
-
-def sha1_dss(data):  #for MSK
-#based on code from https://codereview.stackexchange.com/questions/37648/python-implementation-of-sha1    
-
-    h0 = 0x67452301
-    h1 = 0xEFCDAB89
-    h2 = 0x98BADCFE
-    h3 = 0x10325476
-    h4 = 0xC3D2E1F0
-
-    def rol(n, b):
-        return ((n << b) | (n >> (32 - b))) & 0xffffffff
-
-    #special padding. data always 160 bits (20 bytes, so 44 bytes left to 64Bytes block)
-    padding = 44*b'\x00'
-    padded_data = data + padding 
-    
-    thunks = [padded_data[i:i+64] for i in range(0, len(padded_data), 64)]
-    for thunk in thunks:
-        w = list(struct.unpack('>16L', thunk)) + [0] * 64
-        for i in range(16, 80):
-            w[i] = rol((w[i-3] ^ w[i-8] ^ w[i-14] ^ w[i-16]), 1)
-
-        a, b, c, d, e = h0, h1, h2, h3, h4
-
-        # Main loop
-        for i in range(0, 80):
-            if 0 <= i < 20:
-                f = (b & c) | ((~b) & d)
-                k = 0x5A827999
-            elif 20 <= i < 40:
-                f = b ^ c ^ d
-                k = 0x6ED9EBA1
-            elif 40 <= i < 60:
-                f = (b & c) | (b & d) | (c & d) 
-                k = 0x8F1BBCDC
-            elif 60 <= i < 80:
-                f = b ^ c ^ d
-                k = 0xCA62C1D6
-
-            a, b, c, d, e = rol(a, 5) + f + e + k + w[i] & 0xffffffff, \
-                            a, rol(b, 30), c, d
-
-        h0 = h0 + a & 0xffffffff
-        h1 = h1 + b & 0xffffffff
-        h2 = h2 + c & 0xffffffff
-        h3 = h3 + d & 0xffffffff
-        h4 = h4 + e & 0xffffffff
-
-    #return '%08x%08x%08x%08x%08x' % (h0, h1, h2, h3, h4)
-    return struct.pack('!I',h0) + struct.pack('!I',h1) + struct.pack('!I',h2) + struct.pack('!I',h3) + struct.pack('!I',h4)
-
 
 
 
@@ -3115,186 +2599,4 @@ def https_res_ck_ik(server, rand, autn):
 
 
 
-#################################################################################################################    
-#####
-#####   SA Structure:
-#####   ------------
-#####
-#####   sa_list = [ (proposal 1), (proposal 2), ... , (proposal n)   ]
-#####
-#####   proposal = (Protocol ID, SPI Size) , (Transform 1), (transform 2), ... , (transform n)
-#####
-#####   transform = Tranform Type, Transform ID, (Transform Attributes)
-#####
-#####   transform attribute = Attribute type, value
-#####
-#################################################################################################################
 
-
-#################################################################################################################    
-#####
-#####   TS Structure:
-#####   ------------
-#####
-#####   ts_list = [ (ts 1), (ts 2), ... , (ts n)   ]
-#####
-#####   ts = ts_type, ip_protocol_id, start_port, end_port, starting_address, ending_address
-#####
-#################################################################################################################
-
-
-#################################################################################################################    
-#####
-#####   CP Structure:
-#####   ------------
-#####
-#####   cp_list = [ cfg_type, (attribute 1), ... , (attribute n)   ]
-#####
-#####   attribute = attribute type, value1, value2, .... (depends on the attribute type)
-#####
-#################################################################################################################
-
-
-
-def main():
-
-    cp_list = [
-        CFG_REQUEST, 
-        [INTERNAL_IP4_ADDRESS],
-        [INTERNAL_IP4_DNS],
-        [INTERNAL_IP6_ADDRESS],
-        [INTERNAL_IP6_DNS],
-        [P_CSCF_IP4_ADDRESS],
-        [P_CSCF_IP6_ADDRESS]
-    ]
-
-    ts_list_initiator = [
-        [TS_IPV4_ADDR_RANGE,ANY,0,65535,'0.0.0.0','255.255.255.255'],
-        [TS_IPV6_ADDR_RANGE,ANY,0,65535,'::','ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff']
-    ]
-
-    ts_list_responder = [
-        [TS_IPV4_ADDR_RANGE,ANY,0,65535,'0.0.0.0','255.255.255.255'],
-        [TS_IPV6_ADDR_RANGE,ANY,0,65535,'::','ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff']        
-    ]
-
-
-    sa_list = [
-    [
-       [IKE,0],
-       [ENCR,ENCR_NULL],
-       [PRF,PRF_HMAC_SHA1],
-       [INTEG,AUTH_HMAC_SHA1_96],
-       [D_H,MODP_1024_bit] 
-    ]    ,
-    [
-       [IKE,0],
-       [ENCR,ENCR_AES_CBC,[KEY_LENGTH,128]],
-       [PRF,PRF_HMAC_SHA1],
-       [INTEG,AUTH_HMAC_SHA1_96],
-       [D_H,MODP_2048_bit] 
-    ]    ,
-    
-    [
-       [IKE,0],
-       [ENCR,ENCR_AES_CBC,[KEY_LENGTH,128]],
-       [PRF,PRF_HMAC_SHA1],
-       [INTEG,AUTH_HMAC_SHA1_96],
-       [D_H,MODP_1024_bit]  
-    ],
-    [
-       [IKE,0],
-       [ENCR,ENCR_AES_CBC,[KEY_LENGTH,256]],
-       [PRF,PRF_HMAC_SHA2_256],
-       [INTEG,AUTH_HMAC_SHA2_256_128],
-       [D_H,MODP_2048_bit] 
-    ]
-  
-    ]
-
-
-    sa_list_child = [
-    [
-        [ESP,4],
-        [ENCR,ENCR_AES_GCM_8,[KEY_LENGTH,256]],
-        [INTEG,NONE],
-        [ESN,ESN_NO_ESN]
-    ],
-    [
-        [ESP,4],
-        [ENCR,ENCR_AES_CBC,[KEY_LENGTH,128]],
-        [INTEG,AUTH_HMAC_SHA2_256_128],
-        [ESN,ESN_NO_ESN]
-    ] ,
-    [
-        [ESP,4],
-        [ENCR,ENCR_AES_CBC,[KEY_LENGTH,256]],
-        [INTEG,AUTH_HMAC_SHA2_384_192],
-        [ESN,ESN_NO_ESN]
-    ] ,
-    [
-        [ESP,4],
-        [ENCR,ENCR_AES_CBC,[KEY_LENGTH,256]],
-        [INTEG,AUTH_HMAC_SHA2_512_256],
-        [ESN,ESN_NO_ESN]
-    ]     ,
-    [
-        [ESP,4],
-        [ENCR,ENCR_AES_CBC,[KEY_LENGTH,256]],
-        [INTEG,AUTH_HMAC_MD5_96],
-        [ESN,ESN_NO_ESN]
-    ]    ,
-    [
-        [ESP,4],
-        [ENCR,ENCR_AES_CBC,[KEY_LENGTH,128]],
-        [INTEG,AUTH_HMAC_SHA1_96],
-        [ESN,ESN_NO_ESN]
-    ] ,
-    [
-        [ESP,4],
-        [ENCR,ENCR_AES_CBC,[KEY_LENGTH,256]],
-        [INTEG,AUTH_HMAC_SHA1_96],
-        [ESN,ESN_NO_ESN]
-    ]     
-    ]
-
-
-    parser = OptionParser()    
-    parser.add_option("-m", "--modem", dest="modem", default=DEFAULT_COM, help="modem port (i.e. COMX, or /dev/ttyUSBX), smartcard reader index (0, 1, 2, ...), or server for https")
-    parser.add_option("-s", "--source", dest="source_addr",default=get_default_source_address(),help="IP address of source interface used for IKE/IPSEC")
-    parser.add_option("-d", "--dest", dest="destination_addr",default=DEFAULT_SERVER,help="ip address or fqdn of ePDG") 
-    parser.add_option("-a", "--apn", dest="apn", default=DEFAULT_APN, help="APN to use")    
-    parser.add_option("-g", "--gateway_ip_address", dest="gateway_ip_address", help="gateway IP address")    
-    parser.add_option("-I", "--imsi", dest="imsi",default=DEFAULT_IMSI,help="IMSI") 
-    parser.add_option("-M", "--mcc", dest="mcc",default=DEFAULT_MCC,help="MCC of ePDG (3 digits)") 
-    parser.add_option("-N", "--mnc", dest="mnc",default=DEFAULT_MNC,help="MNC of ePDG (3 digits)")   
-
-    parser.add_option("-K", "--ki", dest="ki", help="ki for Milenage (if not using option -m)")    
-    parser.add_option("-P", "--op", dest="op", help="op for Milenage (if not using option -m)")    
-    parser.add_option("-C", "--opc", dest="opc", help="opc for Milenage (if not using option -m)") 
-    parser.add_option("-n", "--netns", dest="netns", help="Name of network namespace for tun device")  
-    parser.add_option("-S", "--sqn", dest="sqn", help="SQN (6 hex bytes)")        
-    
-    (options, args) = parser.parse_args()
-    
-    try:
-        destination_addr = socket.gethostbyname(options.destination_addr)
-    except:
-        print('Unable to resolve ' + options.destination_addr + '. Exiting.')
-        exit(1)
-
-    a = swu(options.source_addr,destination_addr,options.apn,options.modem,options.gateway_ip_address,options.mcc,options.mnc,options.imsi,options.ki,options.op,options.opc,options.netns, options.sqn)
-
-    if options.imsi == DEFAULT_IMSI: a.get_identity()
-    a.set_sa_list(sa_list)
-    a.set_sa_list_child(sa_list_child)
-    a.set_ts_list(TSI, ts_list_initiator)
-    a.set_ts_list(TSR, ts_list_responder)
-    a.set_cp_list(cp_list)
-    a.start_ike()
-    
-    
-    
-if __name__ == "__main__":
-    main()
-    
