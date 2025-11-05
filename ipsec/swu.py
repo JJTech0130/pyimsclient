@@ -5,7 +5,7 @@ import select
 import sys
 import os
 
-import multiprocess as multiprocessing
+import multiprocessing
 import requests
 
 from binascii import hexlify, unhexlify
@@ -20,6 +20,11 @@ import ipsec.eap
 from ._const import *
 
 
+# if this is runtime and not type checking, replace mutliprocessing with multiprocess
+# this is to fix a bug: cannot pickle 'cryptography.hazmat.primitives.asymmetric.dh.DHParameterNumbers' object
+from typing import TYPE_CHECKING
+if not TYPE_CHECKING:
+    import multiprocess as multiprocessing
 
 """
 
@@ -277,32 +282,16 @@ class swu:
             self.socket.sendto(data, self.server_address)
         else:
             self.socket_nat.sendto(b"\x00" * 4 + data, self.server_address_nat)
-
-    def return_random_bytes(self, size):
-        if size == 0:
-            return b""
-        if size == 4:
-            return struct.pack("!I", random.randrange(pow(2, 32) - 1))
-        if size == 8:
-            return struct.pack("!Q", random.randrange(pow(2, 64) - 1))
-        if size == 16:
-            return struct.pack("!Q", random.randrange(pow(2, 64) - 1)) + struct.pack("!Q", random.randrange(pow(2, 64) - 1))
-
-    def return_random_int(self, size):
-        if size == 4:
-            return random.randrange(pow(2, 32) - 1)
-        if size == 8:
-            return random.randrange(pow(2, 64) - 1)
-        if size == 16:
-            return random.randrange(pow(2, 128) - 1)
-
-    def return_flags(self, value):  # works with value or tuple
-
-        if type(value) is int:
-            rvi = (value // 8) % 8
-            return (rvi // 4, (rvi // 2) % 2, rvi % 2)
-        else:  # is a tuple with (r,v,i)
-            return 32 * value[0] + 16 * value[1] + 8 * value[2]
+    
+    @staticmethod
+    def parse_flags(flags: int) -> tuple[int,int,int]:
+        rvi = (flags // 8) % 8
+        return (rvi // 4, (rvi // 2) % 2, rvi % 2)
+    
+    @staticmethod
+    def encode_flags(t: tuple[int,int,int]) -> int:
+        r, v, i = t
+        return 32 * r + 16 * v + 8 * i
 
     def dh_create_private_key_and_public_bytes(self, key_size):
         prime = {
@@ -348,7 +337,7 @@ class swu:
             self.ike_decoded_header["major_version"] = data[17] // 16
             self.ike_decoded_header["minor_version"] = data[17] % 16
             self.ike_decoded_header["exchange_type"] = data[18]
-            self.ike_decoded_header["flags"] = self.return_flags(data[19])
+            self.ike_decoded_header["flags"] = self.parse_flags(data[19])
             self.ike_decoded_header["message_id"] = struct.unpack("!I", data[20:24])[0]
             self.ike_decoded_header["length"] = struct.unpack("!I", data[24:28])[0]  # header + payloads
 
@@ -509,6 +498,8 @@ class swu:
                 starting_address = socket.inet_ntop(socket.AF_INET6, data[position + 8 : position + 24])
                 ending_address = socket.inet_ntop(socket.AF_INET6, data[position + 24 : position + 40])
                 position += 40
+            else:
+                raise Exception("TS type not supported")
 
             ts_list.append((ts_type, protocol_id, start_port, end_port, starting_address, ending_address))
         return [num_of_ts, ts_list]
@@ -519,7 +510,7 @@ class swu:
     def decode_payload_type_sk(self, data):
         if self.negotiated_encryption_algorithm in (ENCR_AES_CBC,):
             vector = data[0:16]
-            hash_size = self.integ_key_truncated_len_bytes.get(self.negotiated_integrity_algorithm)
+            hash_size = self.integ_key_truncated_len_bytes[self.negotiated_integrity_algorithm]
             hash_data = data[-hash_size:]
 
             encrypted_data = data[16 : len(data) - hash_size]
@@ -547,7 +538,7 @@ class swu:
                 return decoded_payload
 
         elif self.negotiated_encryption_algorithm in (ENCR_NULL,):
-            hash_size = self.integ_key_truncated_len_bytes.get(self.negotiated_integrity_algorithm)
+            hash_size = self.integ_key_truncated_len_bytes[self.negotiated_integrity_algorithm]
             hash_data = data[-hash_size:]
 
             ike_payload = data[0 : len(data) - hash_size - self.sk_ENCR_NULL_pad_length]
@@ -670,7 +661,7 @@ class swu:
         header += bytes([next_payload])
         header += bytes([major_version * 16 + minor_version])
         header += bytes([exchange_type])
-        header += bytes([self.return_flags(flags)])
+        header += bytes([self.encode_flags(flags)])
         header += struct.pack("!I", message_id)
         header += struct.pack("!I", length)
         return header
@@ -695,7 +686,7 @@ class swu:
 
             protocol_id = i[0][0]
             spi_size = i[0][1]
-            spi_bytes = self.return_random_bytes(spi_size)
+            spi_bytes = random.randbytes(spi_size)
             self.sa_spi_list.append(spi_bytes)
 
             for m in range(1, len(i)):  # transform_list
@@ -751,11 +742,13 @@ class swu:
 
     def encode_payload_type_ninr(self, lowest=0):
         if lowest == 0:
-            payload_ninr = self.return_random_bytes(16)
+            payload_ninr = random.randbytes(16)
         elif lowest == -1:
-            payload_ninr = b"\x00" * 8 + self.return_random_bytes(8)
+            payload_ninr = b"\x00" * 8 + random.randbytes(8)
         elif lowest == 1:
-            payload_ninr = b"\xff" * 8 + self.return_random_bytes(8)
+            payload_ninr = b"\xff" * 8 + random.randbytes(8)
+        else:
+            raise Exception("invalid lowest value for nounce")
         self.nounce = payload_ninr
         return payload_ninr
 
@@ -768,8 +761,10 @@ class swu:
     def encode_payload_type_ts(self, type):
         if type == TSI:
             ts_list = self.ts_list_initiator
-        if type == TSR:
+        elif type == TSR:
             ts_list = self.ts_list_responder
+        else:
+            raise Exception("invalid type for TS payload")
 
         payload_ts = bytes([len(ts_list)]) + b"\x00\x00\x00"
 
@@ -786,6 +781,8 @@ class swu:
                 length = struct.pack("!H", 40)
                 starting_address = socket.inet_pton(socket.AF_INET6, i[4])
                 ending_address = socket.inet_pton(socket.AF_INET6, i[5])
+            else:
+                raise Exception("TS type not supported")
             payload_ts += ts_type + ip_protocol + length + start_port + end_port + starting_address + ending_address
 
         return payload_ts
@@ -824,8 +821,10 @@ class swu:
     def encode_payload_type_id(self, type):  # id
         if type == IDI:
             (id_type, value) = self.identification_initiator
-        if type == IDR:
+        elif type == IDR:
             (id_type, value) = self.identification_responder
+        else:
+            raise Exception("invalid type for ID payload")
         if id_type in (ID_FQDN, ID_RFC822_ADDR):
             value = value.encode("utf-8")
         elif id_type == ID_IPV4_ADDR:
@@ -856,10 +855,10 @@ class swu:
 
     def encode_payload_type_sk(self, ike_packet):
 
-        hash_size = self.integ_key_truncated_len_bytes.get(self.negotiated_integrity_algorithm)
+        hash_size = self.integ_key_truncated_len_bytes[self.negotiated_integrity_algorithm]
 
         if self.negotiated_encryption_algorithm in (ENCR_AES_CBC,):
-            vector = self.return_random_bytes(16)
+            vector = random.randbytes(16)
             data_to_encrypt = ike_packet[28:]
 
             res = 16 - (len(data_to_encrypt) % 16)
@@ -868,7 +867,7 @@ class swu:
             else:
                 data_to_encrypt += b"\x00" * (15 + res) + bytes([15 + res])
 
-            flags_role = self.return_flags(ike_packet[19])[2]
+            flags_role = self.parse_flags(ike_packet[19])[2]
 
             if flags_role == ROLE_INITIATOR:
                 if self.old_ike_message_received == True:
@@ -888,7 +887,7 @@ class swu:
             new_ike_packet = ike_packet[0:16] + bytes([SK]) + ike_packet[17:28] + sk_payload
             new_ike_packet = self.set_ike_packet_length(new_ike_packet)
             new_ike_packet_to_integrity = new_ike_packet[0:-hash_size]
-            hash = self.integ_function.get(self.negotiated_integrity_algorithm)
+            hash = self.integ_function[self.negotiated_integrity_algorithm]
 
             if flags_role == ROLE_INITIATOR:
                 if self.old_ike_message_received == True:
@@ -914,9 +913,9 @@ class swu:
             new_ike_packet = ike_packet[0:16] + bytes([SK]) + ike_packet[17:28] + sk_payload
             new_ike_packet = self.set_ike_packet_length(new_ike_packet)
             new_ike_packet_to_integrity = new_ike_packet[0:-hash_size]
-            hash = self.integ_function.get(self.negotiated_integrity_algorithm)
+            hash = self.integ_function[self.negotiated_integrity_algorithm]
 
-            flags_role = self.return_flags(ike_packet[19])[2]
+            flags_role = self.parse_flags(ike_packet[19])[2]
             if flags_role == ROLE_INITIATOR:
                 if self.old_ike_message_received == True:
                     h = hmac.HMAC(self.SK_AI_old, hash)
@@ -965,7 +964,7 @@ class swu:
             return None
 
         if encr_alg in (ENCR_AES_CBC,):
-            vector = self.return_random_bytes(16)
+            vector = random.randbytes(16)
             data_to_encrypt = packet
 
             res = 16 - (len(data_to_encrypt) % 16)
@@ -981,7 +980,7 @@ class swu:
             new_ike_packet = spi_resp + struct.pack("!I", sqn) + vector + cipher_data
 
             if hash_size != 0:
-                hash = self.integ_function.get(integ_alg)
+                hash = self.integ_function[integ_alg]
                 h = hmac.HMAC(integ_key, hash)
                 h.update(new_ike_packet)
                 hash = h.finalize()[0:hash_size]
@@ -998,9 +997,11 @@ class swu:
                 mac_length = 12
             if encr_alg == ENCR_AES_GCM_16:
                 mac_length = 16
+            else:
+                assert False, "unreachable"
 
             aad = spi_resp + struct.pack("!I", sqn)
-            vector = self.return_random_bytes(8)
+            vector = random.randbytes(8)
 
             data_to_encrypt = packet
 
@@ -1024,7 +1025,7 @@ class swu:
             new_ike_packet = spi_resp + struct.pack("!I", sqn) + packet + bytes([0]) + bytes([packet_type])
 
             if hash_size != 0:
-                hash = self.integ_function.get(integ_alg)
+                hash = self.integ_function[integ_alg]
                 h = hmac.HMAC(integ_key, hash)
                 h.update(new_ike_packet)
                 hash = h.finalize()[0:hash_size]
@@ -1043,6 +1044,10 @@ class swu:
         integ_alg = None
         sqn = 1
 
+        encr_key = None
+        integ_key = None
+        spi_resp = None
+
         while True:
             read_sockets, write_sockets, error_sockets = select.select(socket_list, [], [])
             for sock in read_sockets:
@@ -1050,7 +1055,9 @@ class swu:
                     tap_packet = os.read(self.tunnel, 1514)
 
                     if encr_alg is not None:
-
+                        assert encr_key is not None
+                        assert integ_key is not None
+                        assert spi_resp is not None
                         encrypted_packet = self.encapsulate_esp_packet(tap_packet, encr_alg, encr_key, integ_alg, integ_key, spi_resp, sqn)
                         if encrypted_packet is not None:
                             sqn += 1
@@ -1062,6 +1069,7 @@ class swu:
                 elif sock == pipe_ike:
                     pipe_packet = pipe_ike.recv()
                     decode_list = self.decode_inter_process_protocol(pipe_packet)
+                    assert decode_list[1] is not None
                     if decode_list[0] == INTER_PROCESS_DELETE_SA:
                         sys.exit()
                     elif decode_list[0] in (INTER_PROCESS_CREATE_SA, INTER_PROCESS_UPDATE_SA):
@@ -1090,6 +1098,10 @@ class swu:
         encr_alg = None
         integ_alg = None
 
+        spi_init = None
+        encr_key = None
+        integ_key = None
+
         while True:
             read_sockets, write_sockets, error_sockets = select.select(socket_list, [], [])
             for sock in read_sockets:
@@ -1104,6 +1116,9 @@ class swu:
                         elif packet[0:4] == spi_init:
 
                             if encr_alg is not None:
+                                assert encr_key is not None
+                                assert integ_key is not None
+                                assert spi_init is not None
                                 decrypted_packet = self.decapsulate_esp_packet(packet, encr_alg, encr_key, integ_alg, integ_key)
                                 if decrypted_packet is not None:
 
@@ -1112,6 +1127,7 @@ class swu:
                 elif sock == pipe_ike:
                     pipe_packet = pipe_ike.recv()
                     decode_list = self.decode_inter_process_protocol(pipe_packet)
+                    assert decode_list[1] is not None
                     if decode_list[0] == INTER_PROCESS_DELETE_SA:
                         sys.exit()
                     elif decode_list[0] in (INTER_PROCESS_CREATE_SA, INTER_PROCESS_UPDATE_SA):
@@ -1133,7 +1149,7 @@ class swu:
 
         if encr_alg in (ENCR_AES_CBC,):
             vector = packet[8:24]
-            hash_size = self.integ_key_truncated_len_bytes.get(integ_alg)
+            hash_size = self.integ_key_truncated_len_bytes[integ_alg]
             hash_data = packet[-hash_size:]
 
             encrypted_data = packet[24 : len(packet) - hash_size]
@@ -1154,6 +1170,8 @@ class swu:
                 mac_length = 12
             if encr_alg == ENCR_AES_GCM_16:
                 mac_length = 16
+            else:
+                assert False, "unreachable"
 
             aad = packet[0:8]
             cipher = AES.new(encr_key[:-4], AES.MODE_GCM, nonce=encr_key[-4:] + packet[8:16], mac_len=mac_length)
@@ -1166,7 +1184,7 @@ class swu:
             return uncipher_packet
 
         elif encr_alg in (ENCR_NULL,):
-            hash_size = self.integ_key_truncated_len_bytes.get(integ_alg)
+            hash_size = self.integ_key_truncated_len_bytes[integ_alg]
             hash_data = packet[-hash_size:]
 
             uncipher_data = packet[8 : len(packet) - hash_size]
@@ -1274,7 +1292,7 @@ class swu:
 
         STREAM = self.nounce + self.nounce_received
 
-        AUTH_KEY_SIZE = self.integ_key_len_bytes.get(self.negotiated_integrity_algorithm_child)
+        AUTH_KEY_SIZE = self.integ_key_len_bytes[self.negotiated_integrity_algorithm_child]
         ENCR_KEY_SIZE = self.negotiated_encryption_algorithm_key_size_child // 8
 
         # exception for GCM since we need extra 4 bytes for SALT
@@ -1298,7 +1316,7 @@ class swu:
 
     def generate_keying_material(self):
 
-        hash = self.prf_function.get(self.negotiated_prf)
+        hash = self.prf_function[self.negotiated_prf]
         h = hmac.HMAC(self.nounce + self.nounce_received, hash)
         h.update(self.dh_shared_key)
         SKEYSEED = h.finalize()
@@ -1307,8 +1325,8 @@ class swu:
         STREAM = self.nounce + self.nounce_received + self.ike_spi_initiator + self.ike_spi_responder
         print("STREAM", toHex(STREAM))
 
-        PRF_KEY_SIZE = self.prf_key_len_bytes.get(self.negotiated_prf)
-        AUTH_KEY_SIZE = self.integ_key_len_bytes.get(self.negotiated_integrity_algorithm)
+        PRF_KEY_SIZE = self.prf_key_len_bytes[self.negotiated_prf]
+        AUTH_KEY_SIZE = self.integ_key_len_bytes[self.negotiated_integrity_algorithm]
         ENCR_KEY_SIZE = self.negotiated_encryption_algorithm_key_size // 8
 
         KEY_LENGHT_TOTAL = 3 * PRF_KEY_SIZE + 2 * AUTH_KEY_SIZE + 2 * ENCR_KEY_SIZE
@@ -1343,7 +1361,7 @@ class swu:
         self.SK_PI_old = self.SK_PI
         self.SK_PR_old = self.SK_PR
 
-        hash = self.prf_function.get(self.negotiated_prf)
+        hash = self.prf_function[self.negotiated_prf]
         h = hmac.HMAC(self.SK_D, hash)
         h.update(self.dh_shared_key + self.nounce + self.nounce_received)
         SKEYSEED = h.finalize()
@@ -1352,8 +1370,8 @@ class swu:
         STREAM = self.nounce + self.nounce_received + self.ike_spi_initiator + self.ike_spi_responder
 
         print("STREAM", toHex(STREAM))
-        PRF_KEY_SIZE = self.prf_key_len_bytes.get(self.negotiated_prf)
-        AUTH_KEY_SIZE = self.integ_key_len_bytes.get(self.negotiated_integrity_algorithm)
+        PRF_KEY_SIZE = self.prf_key_len_bytes[self.negotiated_prf]
+        AUTH_KEY_SIZE = self.integ_key_len_bytes[self.negotiated_integrity_algorithm]
         ENCR_KEY_SIZE = self.negotiated_encryption_algorithm_key_size // 8
 
         KEY_LENGHT_TOTAL = PRF_KEY_SIZE + 2 * AUTH_KEY_SIZE + 2 * ENCR_KEY_SIZE
@@ -1375,7 +1393,7 @@ class swu:
         self.print_ikev2_decryption_table()
 
     def prf_plus(self, algorithm, key, stream, size):
-        hash = self.prf_function.get(algorithm)
+        hash = self.prf_function[algorithm]
         t = b""
         t_total = b""
         iter = 1
@@ -1389,15 +1407,17 @@ class swu:
         return t_total[0:size]
 
     def sha1_nat_source(self, print_info=True):
-        digest = hashes.Hash(hashes.SHA1())
-        if self.userplane_mode == ESP_PROTOCOL:
-            digest.update(self.ike_spi_initiator + self.ike_spi_responder + socket.inet_pton(socket.AF_INET, self.source_address) + struct.pack("!H", self.port))
-        else:  # NAT_TRAVERSAL
-            digest.update(self.ike_spi_initiator + self.ike_spi_responder + socket.inet_pton(socket.AF_INET, self.source_address) + struct.pack("!H", self.port_nat))
-        hash = digest.finalize()
-        if print_info == True:
-            print("NAT SOURCE", toHex(hash))
-        return hash
+        # We always want to trigger NAT-T so that we don't have to implement raw ESP
+        return b'\x00'*20
+        # digest = hashes.Hash(hashes.SHA1())
+        # if self.userplane_mode == ESP_PROTOCOL:
+        #     digest.update(self.ike_spi_initiator + self.ike_spi_responder + socket.inet_pton(socket.AF_INET, self.source_address) + struct.pack("!H", self.port))
+        # else:  # NAT_TRAVERSAL
+        #     digest.update(self.ike_spi_initiator + self.ike_spi_responder + socket.inet_pton(socket.AF_INET, self.source_address) + struct.pack("!H", self.port_nat))
+        # hash = digest.finalize()
+        # if print_info == True:
+        #     print("NAT SOURCE", toHex(hash))
+        # return hash
 
     def sha1_nat_destination(self, print_info=True):
         digest = hashes.Hash(hashes.SHA1())
@@ -1415,7 +1435,7 @@ class swu:
     def create_IKE_SA_INIT(self, same_spi=False, cookie=False):
         # create SPIi
         if same_spi == False:
-            self.ike_spi_initiator = self.return_random_bytes(8)
+            self.ike_spi_initiator = random.randbytes(8)
         self.ike_spi_responder = (0).to_bytes(8, "big")
         if cookie == False:
             header = self.encode_header(self.ike_spi_initiator, self.ike_spi_responder, SA, 2, 0, IKE_SA_INIT, (0, 0, 1), self.message_id_request)
@@ -1801,7 +1821,7 @@ class swu:
                                         print("MSK", toHex(self.MSK))
                                         print("EMSK", toHex(self.EMSK))
 
-                                        vector = self.return_random_bytes(16)
+                                        vector = random.randbytes(16)
                                         at_iv = bytes([AT_IV]) + fromHex("050000") + vector
 
                                         if ERROR == False:
@@ -1886,7 +1906,7 @@ class swu:
                     eap_received = True
                     if i[1][0] in (EAP_SUCCESS,):
 
-                        hash = self.prf_function.get(self.negotiated_prf)
+                        hash = self.prf_function[self.negotiated_prf]
                         h = hmac.HMAC(self.SK_PI, hash)
                         h.update(bytes([self.identification_initiator[0]]) + b"\x00" * 3 + self.identification_initiator[1].encode("utf-8"))
                         hash_result = h.finalize()
@@ -1965,6 +1985,7 @@ class swu:
                             self.eap_identifier = i[1][1]
 
                             NOTIFICATION = self.get_eap_aka_attribute_value(i[1][4], AT_NOTIFICATION)
+                            assert NOTIFICATION is not None
 
                             if NOTIFICATION < 32768:  # error
                                 print("EAP AT_NOTIFICATION with ERROR " + str(NOTIFICATION))
@@ -1982,6 +2003,7 @@ class swu:
                 return OK, ""
             else:
                 return MANDATORY_INFORMATION_MISSING, "NO EAP PAYLOAD RECEIVED"
+        return OTHER_ERROR, "NOT IKE?"
 
     def state_4(self):
         self.message_id_request += 1
@@ -2047,6 +2069,7 @@ class swu:
 
             self.generate_keying_material_child()
             return OK, ""
+        return OTHER_ERROR, "NOT IKE?"
 
     def state_delete(self, initiator, kill=True):
         if initiator == True:
@@ -2153,6 +2176,8 @@ class swu:
         isIKE = False
         isESP = False
 
+        spi = None
+
         for i in self.decoded_payload[0][1]:
             if i[0] == SA:  #
                 proposal = i[1][0]
@@ -2180,6 +2205,7 @@ class swu:
             self.ike_spi_responder_old = self.ike_spi_responder
             self.ike_spi_initiator_old = self.ike_spi_initiator
 
+            assert spi is not None
             self.ike_spi_responder = spi
             self.ike_spi_initiator = self.sa_spi_list[0]  # only one proposal was made
 
@@ -2306,6 +2332,7 @@ class swu:
                 elif sock == self.ike_to_ipsec_decoder:
                     pipe_packet = self.ike_to_ipsec_decoder.recv()
                     decode_list = self.decode_inter_process_protocol(pipe_packet)
+                    assert decode_list[1] is not None
                     if decode_list[0] == INTER_PROCESS_IKE:
 
                         packet = decode_list[1][0][1]
