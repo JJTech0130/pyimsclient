@@ -1,33 +1,25 @@
-import serial
 import struct
 import socket
 import random
-import time
 import select
 import sys
 import os
-import fcntl
-import subprocess
 
-# import multiprocessing
 import multiprocess as multiprocessing
 import requests
 
-from optparse import OptionParser
 from binascii import hexlify, unhexlify
+
+from Cryptodome.Cipher import AES
 
 from cryptography.hazmat.primitives.asymmetric import dh
 from cryptography.hazmat.primitives import hashes, hmac
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
-# from Crypto.Cipher import AES
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-
 import ipsec.eap
 from ._const import *
 
 
-# requests.packages.urllib3.disable_warnings()
 
 """
 
@@ -63,7 +55,6 @@ class swu:
         self.set_udp()  # default
         self.create_socket(self.client_address)
         self.create_socket_nat(self.client_address_nat)
-        self.create_socket_esp(self.client_address_esp)
         self.userplane_mode = ESP_PROTOCOL
 
         self.sk_ENCR_NULL_pad_length = 0  # [0 or 1 byte] SK payload is not definied in RFC for IKEv2. Some vendors don't use pad length byte, others use.
@@ -73,12 +64,10 @@ class swu:
         self.port_nat = DEFAULT_IKE_NAT_TRAVERSAL_PORT
         self.client_address = (self.source_address, self.port)
         self.client_address_nat = (self.source_address, self.port_nat)
-        self.client_address_esp = (self.source_address, 0)
         self.timeout = DEFAULT_TIMEOUT_UDP
         self.state = 0
         self.server_address = (self.epdg_address, self.port)
         self.server_address_nat = (self.epdg_address, self.port_nat)
-        self.server_address_esp = (self.epdg_address, 0)
         self.message_id_request = 0
         self.message_id_responses = 0
 
@@ -277,21 +266,11 @@ class swu:
         self.socket_nat.bind(client_address)
         self.socket_nat.settimeout(self.timeout)
 
-    def create_socket_esp(self, client_address):
-        # Stub using pipe
-        r, w = os.pipe()
-        self.socket_esp = w
-        # self.socket_esp = socket.socket(socket.AF_INET, socket.SOCK_RAW, ESP_PROTOCOL)
-        # self.socket_esp.bind(client_address)
-
     def set_server(self, address):
         self.server_address = (address, self.port)
 
     def set_server_nat(self, address):
         self.server_address_nat = (address, self.port_nat)
-
-    def set_server_esp(self, address):
-        self.server_address_esp = (address, 0)
 
     def send_data(self, data):
         if self.userplane_mode == ESP_PROTOCOL:
@@ -1059,7 +1038,7 @@ class swu:
     def encapsulate_ipsec(self, args):
 
         pipe_ike = args[0]
-        socket_list = [self.tunnel, pipe_ike, self.socket_esp]
+        socket_list = [self.tunnel, pipe_ike]
         encr_alg = None
         integ_alg = None
         sqn = 1
@@ -1076,7 +1055,7 @@ class swu:
                         if encrypted_packet is not None:
                             sqn += 1
                             if self.userplane_mode == ESP_PROTOCOL:
-                                self.socket_esp.sendto(encrypted_packet, self.server_address_esp)
+                                raise Exception("ESP_PROTOCOL mode not supported in encapsulate_ipsec")
                             else:
                                 self.socket_nat.sendto(encrypted_packet, self.server_address_nat)
 
@@ -1107,7 +1086,7 @@ class swu:
 
         pipe_ike = args[0]
 
-        socket_list = [self.socket_nat, pipe_ike, self.socket_esp]
+        socket_list = [self.socket_nat, pipe_ike]
         encr_alg = None
         integ_alg = None
 
@@ -1126,17 +1105,6 @@ class swu:
 
                             if encr_alg is not None:
                                 decrypted_packet = self.decapsulate_esp_packet(packet, encr_alg, encr_key, integ_alg, integ_key)
-                                if decrypted_packet is not None:
-
-                                    os.write(self.tunnel, decrypted_packet)
-
-                elif sock == self.socket_esp:
-                    packet, address = self.socket_esp.recvfrom(2000)
-                    if encr_alg is not None:
-                        if packet[20:24] == spi_init:
-
-                            if encr_alg is not None:
-                                decrypted_packet = self.decapsulate_esp_packet(packet[20:], encr_alg, encr_key, integ_alg, integ_key)
                                 if decrypted_packet is not None:
 
                                     os.write(self.tunnel, decrypted_packet)
