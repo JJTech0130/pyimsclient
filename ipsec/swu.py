@@ -1324,8 +1324,8 @@ class swu():
         return return_list
 
     def set_sa_negotiated(self,num):
-        sa_negotiated = self.sa_list[num]
-        self.sa_list_negotiated = [self.sa_list[num]]
+        sa_negotiated = self.sa_list[num-1]
+        self.sa_list_negotiated = [self.sa_list[num-1]]
         
         #default values
         self.negotiated_integrity_algorithm = NONE
@@ -1352,9 +1352,9 @@ class swu():
         
 
     def set_sa_negotiated_child(self,num):
-        sa_negotiated = self.sa_list_child[num]
-        self.spi_init_child = self.sa_spi_list[num]
-        self.sa_list_negotiated_child = [self.sa_list_child[num]]
+        sa_negotiated = self.sa_list_child[num-1]
+        self.spi_init_child = self.sa_spi_list[num-1]
+        self.sa_list_negotiated_child = [self.sa_list_child[num-1]]
         
         #default values
         self.negotiated_integrity_algorithm_child = NONE

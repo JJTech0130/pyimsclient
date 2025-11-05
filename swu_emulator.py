@@ -70,74 +70,74 @@ def main():
     sa_list = [
     [
        [IKE,0],
-       [ENCR,ENCR_NULL],
-       [PRF,PRF_HMAC_SHA1],
-       [INTEG,AUTH_HMAC_SHA1_96],
-       [D_H,MODP_1024_bit] 
-    ]    ,
-    [
-       [IKE,0],
-       [ENCR,ENCR_AES_CBC,[KEY_LENGTH,128]],
-       [PRF,PRF_HMAC_SHA1],
-       [INTEG,AUTH_HMAC_SHA1_96],
-       [D_H,MODP_2048_bit] 
-    ]    ,
-    
-    [
-       [IKE,0],
-       [ENCR,ENCR_AES_CBC,[KEY_LENGTH,128]],
-       [PRF,PRF_HMAC_SHA1],
-       [INTEG,AUTH_HMAC_SHA1_96],
-       [D_H,MODP_1024_bit]  
-    ],
-    [
-       [IKE,0],
        [ENCR,ENCR_AES_CBC,[KEY_LENGTH,256]],
        [PRF,PRF_HMAC_SHA2_256],
        [INTEG,AUTH_HMAC_SHA2_256_128],
        [D_H,MODP_2048_bit] 
-    ]
+    ],
+    # [
+    #    [IKE,0],
+    #    [ENCR,ENCR_NULL],
+    #    [PRF,PRF_HMAC_SHA1],
+    #    [INTEG,AUTH_HMAC_SHA1_96],
+    #    [D_H,MODP_1024_bit] 
+    # ]    ,
+    # [
+    #    [IKE,0],
+    #    [ENCR,ENCR_AES_CBC,[KEY_LENGTH,128]],
+    #    [PRF,PRF_HMAC_SHA1],
+    #    [INTEG,AUTH_HMAC_SHA1_96],
+    #    [D_H,MODP_2048_bit] 
+    # ]    ,
+    
+    # [
+    #    [IKE,0],
+    #    [ENCR,ENCR_AES_CBC,[KEY_LENGTH,128]],
+    #    [PRF,PRF_HMAC_SHA1],
+    #    [INTEG,AUTH_HMAC_SHA1_96],
+    #    [D_H,MODP_1024_bit]  
+    # ]
   
     ]
 
 
     sa_list_child = [
-    [
-        [ESP,4],
-        [ENCR,ENCR_AES_GCM_8,[KEY_LENGTH,256]],
-        [INTEG,NONE],
-        [ESN,ESN_NO_ESN]
-    ],
-    [
-        [ESP,4],
-        [ENCR,ENCR_AES_CBC,[KEY_LENGTH,128]],
-        [INTEG,AUTH_HMAC_SHA2_256_128],
-        [ESN,ESN_NO_ESN]
-    ] ,
-    [
-        [ESP,4],
-        [ENCR,ENCR_AES_CBC,[KEY_LENGTH,256]],
-        [INTEG,AUTH_HMAC_SHA2_384_192],
-        [ESN,ESN_NO_ESN]
-    ] ,
-    [
-        [ESP,4],
-        [ENCR,ENCR_AES_CBC,[KEY_LENGTH,256]],
-        [INTEG,AUTH_HMAC_SHA2_512_256],
-        [ESN,ESN_NO_ESN]
-    ]     ,
-    [
-        [ESP,4],
-        [ENCR,ENCR_AES_CBC,[KEY_LENGTH,256]],
-        [INTEG,AUTH_HMAC_MD5_96],
-        [ESN,ESN_NO_ESN]
-    ]    ,
-    [
-        [ESP,4],
-        [ENCR,ENCR_AES_CBC,[KEY_LENGTH,128]],
-        [INTEG,AUTH_HMAC_SHA1_96],
-        [ESN,ESN_NO_ESN]
-    ] ,
+    # [
+    #     [ESP,4],
+    #     [ENCR,ENCR_AES_GCM_8,[KEY_LENGTH,256]],
+    #     [INTEG,NONE],
+    #     [ESN,ESN_NO_ESN]
+    # ],
+    # [
+    #     [ESP,4],
+    #     [ENCR,ENCR_AES_CBC,[KEY_LENGTH,128]],
+    #     [INTEG,AUTH_HMAC_SHA2_256_128],
+    #     [ESN,ESN_NO_ESN]
+    # ] ,
+    # [
+    #     [ESP,4],
+    #     [ENCR,ENCR_AES_CBC,[KEY_LENGTH,256]],
+    #     [INTEG,AUTH_HMAC_SHA2_384_192],
+    #     [ESN,ESN_NO_ESN]
+    # ] ,
+    # [
+    #     [ESP,4],
+    #     [ENCR,ENCR_AES_CBC,[KEY_LENGTH,256]],
+    #     [INTEG,AUTH_HMAC_SHA2_512_256],
+    #     [ESN,ESN_NO_ESN]
+    # ]     ,
+    # [
+    #     [ESP,4],
+    #     [ENCR,ENCR_AES_CBC,[KEY_LENGTH,256]],
+    #     [INTEG,AUTH_HMAC_MD5_96],
+    #     [ESN,ESN_NO_ESN]
+    # ]    ,
+    # [
+    #     [ESP,4],
+    #     [ENCR,ENCR_AES_CBC,[KEY_LENGTH,128]],
+    #     [INTEG,AUTH_HMAC_SHA1_96],
+    #     [ESN,ESN_NO_ESN]
+    # ] ,
     [
         [ESP,4],
         [ENCR,ENCR_AES_CBC,[KEY_LENGTH,256]],
