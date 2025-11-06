@@ -251,10 +251,12 @@ class TunMacOS(Tun):
 
     def add_address(self, ip: str, ipv6: bool = False):
         # Hack: just use ifconfig
+        # Remove the netmask from the second occurence ("dest", but we don't really use it that way)
+        addr = ip.split("/", 1)[0]
         if ipv6:
-            subprocess.run(["ifconfig", self._ifname, "inet6", ip, "alias"])
+            subprocess.run(["/sbin/ifconfig", self._ifname, "inet6", ip, "alias"])
         else:
-            subprocess.run(["ifconfig", self._ifname, "inet", ip, "alias"])
+            subprocess.run(["/sbin/ifconfig", self._ifname, "inet", ip, addr, "alias"])
 
     def write_packet(self, packet: bytes):
         # utun expects a 4-byte network-order family header before the packet bytes.
