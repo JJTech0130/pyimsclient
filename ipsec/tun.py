@@ -23,6 +23,9 @@ class Tun:
     def close(self):
         pass
 
+    def fileno(self) -> int:
+        raise NotImplementedError
+
 class TunLinux(Tun):
     TUN_DEVICE = "/dev/net/tun" # from <linux/if_tun.h>
     IFF_TUN = 0x0001
@@ -216,6 +219,9 @@ class TunLinux(Tun):
         except Exception:
             pass
 
+    def fileno(self) -> int:
+        return self.fd
+
 class TunMacOS(Tun):
     CTLIOCGINFO = 0xC0644E03  # ioctl to get control id
     SIOCSIFADDR = 0x8020690
@@ -255,8 +261,15 @@ class TunMacOS(Tun):
         addr = ip.split("/", 1)[0]
         if ipv6:
             subprocess.run(["/sbin/ifconfig", self._ifname, "inet6", ip, "alias"])
+            # Hack: add default IPv6 link-local route
+            # Equivalent: route add -inet6 -ifscope utun15 default fe80::%utun15
+            subprocess.run(["/sbin/route", "add", "-inet6", "-ifscope", self._ifname, "default", f"fe80::%{self._ifname}"])
         else:
             subprocess.run(["/sbin/ifconfig", self._ifname, "inet", ip, addr, "alias"])
+            # Hack: add default IPv4 route
+            # Equivalent: route add default -ifscope utun15 10.130.184.132
+            subprocess.run(["/sbin/route", "add", "default", "-ifscope", self._ifname, addr])
+
 
     def write_packet(self, packet: bytes):
         # utun expects a 4-byte network-order family header before the packet bytes.
@@ -280,6 +293,9 @@ class TunMacOS(Tun):
             self.sock.close()
         except Exception:
             pass
+
+    def fileno(self) -> int:
+        return self.sock.fileno()
 
 def open_tun() -> Tun:
     """
