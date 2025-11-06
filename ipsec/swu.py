@@ -941,8 +941,18 @@ class swu:
     ### USER PLANE FUNCTIONS AND INTER PROCESS COMMUNICATION ####
     def set_routes(self):
         # Fake using a pipe
-        r, w = os.pipe()
-        self.tunnel = w
+        import ipsec.tun
+        self.tunnel = ipsec.tun.open_tun()
+
+        if self.ip_address_list != []:
+            for i in self.ip_address_list:
+                self.tunnel.add_address(i)
+        if self.ipv6_address_list != []:
+            for i in self.ipv6_address_list:
+                self.tunnel.add_address(i, ipv6=True)
+
+
+    #    
 
     def delete_routes(self):
         pass
@@ -1039,7 +1049,7 @@ class swu:
     def encapsulate_ipsec(self, args):
 
         pipe_ike = args[0]
-        socket_list = [self.tunnel, pipe_ike]
+        socket_list = [self.tunnel.fileno(), pipe_ike]
         encr_alg = None
         integ_alg = None
         sqn = 1
@@ -1051,8 +1061,9 @@ class swu:
         while True:
             read_sockets, write_sockets, error_sockets = select.select(socket_list, [], [])
             for sock in read_sockets:
-                if sock == self.tunnel:
-                    tap_packet = os.read(self.tunnel, 1514)
+                if sock == self.tunnel.fileno():
+                    print("Reading from tunnel!!")
+                    tap_packet = self.tunnel.read_packet()
 
                     if encr_alg is not None:
                         assert encr_key is not None
@@ -1121,8 +1132,8 @@ class swu:
                                 assert spi_init is not None
                                 decrypted_packet = self.decapsulate_esp_packet(packet, encr_alg, encr_key, integ_alg, integ_key)
                                 if decrypted_packet is not None:
-
-                                    os.write(self.tunnel, decrypted_packet)
+                                    print("Writing to tunnel!!")
+                                    self.tunnel.write_packet(decrypted_packet)
 
                 elif sock == pipe_ike:
                     pipe_packet = pipe_ike.recv()
