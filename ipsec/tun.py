@@ -240,8 +240,8 @@ class TunMacOS(Tun):
         # struct ctl_info { 
         #     u_int32_t ctl_id; /* Kernel Controller ID */
         #     char ctl_name[96  ]; /* Kernel Controller Name (a C string) */
-        # };  
-        ctl_info = b"\x00" * 4 + b"com.apple.net.utun_control".ljust(96, b"\x00")
+        # };
+        ctl_info = bytearray(b"\x00" * 4 + b"com.apple.net.utun_control".ljust(96, b"\x00"))
 
         # get the Controller ID for utun_control
         fcntl.ioctl(s, self.CTLIOCGINFO, ctl_info, True)
