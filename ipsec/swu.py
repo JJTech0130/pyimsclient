@@ -57,9 +57,7 @@ class swu:
         self.sqn = sqn
 
         self.set_variables()
-        self.set_udp()  # default
-        self.create_socket(self.client_address)
-        self.create_socket_nat(self.client_address_nat)
+        self.create_sockets()
         self.userplane_mode = ESP_PROTOCOL
 
         self.sk_ENCR_NULL_pad_length = 0  # [0 or 1 byte] SK payload is not definied in RFC for IKEv2. Some vendors don't use pad length byte, others use.
@@ -67,8 +65,6 @@ class swu:
     def set_variables(self):
         self.port = DEFAULT_IKE_PORT
         self.port_nat = DEFAULT_IKE_NAT_TRAVERSAL_PORT
-        self.client_address = (self.source_address, self.port)
-        self.client_address_nat = (self.source_address, self.port_nat)
         self.timeout = DEFAULT_TIMEOUT_UDP
         self.state = 0
         self.server_address = (self.epdg_address, self.port)
@@ -248,27 +244,10 @@ class swu:
     def set_timeout(self, value):
         self.timeout = value
 
-    def set_udp(self):
-        self.socket_type = UDP
-
-    def create_socket(self, client_address):
-
-        if self.socket_type == UDP:
-            self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        else:
-            exit()
-
-        self.socket.bind(client_address)
+    def create_sockets(self):
+        self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.socket.settimeout(self.timeout)
-
-    def create_socket_nat(self, client_address):
-
-        if self.socket_type == UDP:
-            self.socket_nat = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        else:
-            exit()
-
-        self.socket_nat.bind(client_address)
+        self.socket_nat = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.socket_nat.settimeout(self.timeout)
 
     def set_server(self, address):
