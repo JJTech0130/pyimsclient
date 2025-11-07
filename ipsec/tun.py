@@ -17,7 +17,7 @@ class Tun:
     def ifname(self) -> str:
         raise NotImplementedError
     
-    def add_address(self, ip: str, ipv6: bool = False):
+    def add_address(self, addr: str, ipv6: bool = False):
         raise NotImplementedError
 
     def close(self):
@@ -193,21 +193,21 @@ class TunLinux(Tun):
         finally:
             s.close()
     
-    def add_address(self, ip: str, ipv6: bool = False):
-        if '/' in ip:
-            addr, prefixlen_str = ip.split('/', 1)
+    def add_address(self, addr: str, ipv6: bool = False):
+        if '/' in addr:
+            ip, prefixlen_str = addr.split('/', 1)
             prefixlen = int(prefixlen_str)
         else:
-            addr = ip
+            ip = addr
             prefixlen = 64
         if ipv6:
-            self._add_address_netlink(self._ifname, addr, prefixlen)
+            self._add_address_netlink(self._ifname, ip, prefixlen)
         else:
             if prefixlen == 64:
                 prefixlen = 32
 
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            ifreq = self._ifname.encode('utf-8').ljust(16, b'\x00')[:16] + socket.AF_INET.to_bytes(2, 'little') + b'\x00'*2 + socket.inet_aton(addr) + b'\x00'*8
+            ifreq = self._ifname.encode('utf-8').ljust(16, b'\x00')[:16] + socket.AF_INET.to_bytes(2, 'little') + b'\x00'*2 + socket.inet_aton(ip) + b'\x00'*8
             mask = (0xffffffff << (32 - prefixlen)) & 0xffffffff
             ifreq_mask = self._ifname.encode('utf-8').ljust(16, b'\x00')[:16] + socket.AF_INET.to_bytes(2, 'little') + b'\x00'*2+ mask.to_bytes(4, 'big') + b'\x00'*8
             fcntl.ioctl(s, self.SIOCSIFADDR, ifreq)
@@ -223,52 +223,55 @@ class TunLinux(Tun):
         return self.fd
 
 class TunMacOS(Tun):
-    CTLIOCGINFO = 0xC0644E03  # ioctl to get control id
-    SIOCSIFADDR = 0x8020690
-    UTUN_CONTROL_NAME = b"com.apple.net.utun_control"
-    CTL_INFO_NAME_SIZE = 96
-    AF_SYSTEM = 32
-    SYSPROTO_CONTROL = 2
+    CTLIOCGINFO = 0xC0644E03 # _IOWR('N', 3, struct ctl_info) from <sys/kern_control.h>
+    SIOCSIFADDR = 0x8020690  # _IOW('i', 12, struct ifreq)    from <sys/sockio.h>
+    SYSPROTO_CONTROL = 2     #                                from <sys/sys_domain.h>
+    UTUN_OPT_IFNAME = 2      #                                from <net/if_utun.h>
 
 
     def __init__(self):
         super().__init__()
-        # AF_SYSTEM / SYSPROTO_CONTROL socket
-        s = socket.socket(self.AF_SYSTEM, socket.SOCK_DGRAM, self.SYSPROTO_CONTROL)
+        if not sys.platform == "darwin":
+            raise RuntimeError("TunMacOS can only be used on macOS")
+        
+        s = socket.socket(socket.AF_SYSTEM, socket.SOCK_DGRAM, self.SYSPROTO_CONTROL)
 
-        # build ctl_info as bytearray: 4 bytes ctl_id, 96 bytes name
-        ctl_info = bytearray(4 + self.CTL_INFO_NAME_SIZE)
-        ctl_info[4:4+len(self.UTUN_CONTROL_NAME)] = self.UTUN_CONTROL_NAME
+        # from <sys/kern_control.h>
+        # struct ctl_info { 
+        #     u_int32_t ctl_id; /* Kernel Controller ID */
+        #     char ctl_name[96  ]; /* Kernel Controller Name (a C string) */
+        # };  
+        ctl_info = b"\x00" * 4 + b"com.apple.net.utun_control".ljust(96, b"\x00")
 
-        # ioctl fills in ctl_id
+        # get the Controller ID for utun_control
         fcntl.ioctl(s, self.CTLIOCGINFO, ctl_info, True)
         ctl_id = int.from_bytes(ctl_info[:4], "little")
 
-        # connect using Python's (ctl_id, unit) tuple form; unit=0 => kernel assigns
+        # connecting to the control creates a new utun interface
+        # 0 means the kernel chooses the next available utunX
         s.connect((ctl_id, 0))
 
-        self.sock = s
-
-        UTUN_OPT_IFNAME = 2
-        ifname = s.getsockopt(self.SYSPROTO_CONTROL, UTUN_OPT_IFNAME, 32)
+        # get the assigned interface name
+        ifname = s.getsockopt(self.SYSPROTO_CONTROL, self.UTUN_OPT_IFNAME, 32)
         self._ifname = ifname.split(b'\x00', 1)[0].decode()
 
+        self._sock = s
         print(f"Initialized macOS utun: {self._ifname} (fd={s.fileno()})")
 
-    def add_address(self, ip: str, ipv6: bool = False):
-        # Hack: just use ifconfig
+    def add_address(self, addr: str, ipv6: bool = False):
+        # Hack: shell out to ifconfig, replace this with ioctl in the future
         # Remove the netmask from the second occurence ("dest", but we don't really use it that way)
-        addr = ip.split("/", 1)[0]
+        ip = addr.split("/", 1)[0]
         if ipv6:
-            subprocess.run(["/sbin/ifconfig", self._ifname, "inet6", ip, "alias"])
+            subprocess.run(["/sbin/ifconfig", self._ifname, "inet6", addr, "alias"])
             # Hack: add default IPv6 link-local route
             # Equivalent: route add -inet6 -ifscope utun15 default fe80::%utun15
             subprocess.run(["/sbin/route", "add", "-inet6", "-ifscope", self._ifname, "default", f"fe80::%{self._ifname}"])
         else:
-            subprocess.run(["/sbin/ifconfig", self._ifname, "inet", ip, addr, "alias"])
+            subprocess.run(["/sbin/ifconfig", self._ifname, "inet", addr, ip, "alias"])
             # Hack: add default IPv4 route
             # Equivalent: route add default -ifscope utun15 10.130.184.132
-            subprocess.run(["/sbin/route", "add", "default", "-ifscope", self._ifname, addr])
+            subprocess.run(["/sbin/route", "add", "default", "-ifscope", self._ifname, ip])
 
 
     def write_packet(self, packet: bytes):
@@ -276,11 +279,11 @@ class TunMacOS(Tun):
         # For IPv4: socket.AF_INET (2); IPv6: socket.AF_INET6 (10). We'll assume IPv6 if packet starts with 0x6.
         fam = socket.AF_INET6 if packet and (packet[0] >> 4) == 6 else socket.AF_INET
         hdr = fam.to_bytes(4, "big")
-        self.sock.sendall(hdr + packet)
+        self._sock.sendall(hdr + packet)
 
     def read_packet(self, size: int = 65536) -> bytes:
         # recv includes 4-byte family header
-        data = self.sock.recv(size + 4)
+        data = self._sock.recv(size + 4)
         if len(data) < 4:
             return b''
         return data[4:]
@@ -289,13 +292,10 @@ class TunMacOS(Tun):
         return self._ifname
 
     def close(self):
-        try:
-            self.sock.close()
-        except Exception:
-            pass
+        self._sock.close()
 
     def fileno(self) -> int:
-        return self.sock.fileno()
+        return self._sock.fileno()
 
 def open_tun() -> Tun:
     """
@@ -315,7 +315,7 @@ if __name__ == "__main__":
     t = open_tun()
     print("ifname:", t.ifname())
 
-    # Example: write an IPv6 packet (UNCIPHER PACKET example)
+    # Example: write an IPv6 packet
     example_hex = "6000000000383afffe80000000000000000000000829db40ff02000000000000000000000000000186004fe4ff00070800000000000003e803044040ffffffffffffffff0000000026000382ac851ae600000000000000000501000000000596"
     pkt = bytes.fromhex(example_hex)
 
