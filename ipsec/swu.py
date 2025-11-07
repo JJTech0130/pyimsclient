@@ -10,8 +10,6 @@ import requests
 
 from binascii import hexlify, unhexlify
 
-from Cryptodome.Cipher import AES
-
 from cryptography.hazmat.primitives.asymmetric import dh
 from cryptography.hazmat.primitives import hashes, hmac
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
@@ -979,35 +977,35 @@ class swu:
             return new_ike_packet + hash
 
         elif encr_alg in (ENCR_AES_GCM_8, ENCR_AES_GCM_12, ENCR_AES_GCM_16):
+            raise Exception("AES GCM not implemented")
+            # if encr_alg == ENCR_AES_GCM_8:
+            #     mac_length = 8
+            # if encr_alg == ENCR_AES_GCM_12:
+            #     mac_length = 12
+            # if encr_alg == ENCR_AES_GCM_16:
+            #     mac_length = 16
+            # else:
+            #     assert False, "unreachable"
 
-            if encr_alg == ENCR_AES_GCM_8:
-                mac_length = 8
-            if encr_alg == ENCR_AES_GCM_12:
-                mac_length = 12
-            if encr_alg == ENCR_AES_GCM_16:
-                mac_length = 16
-            else:
-                assert False, "unreachable"
+            # aad = spi_resp + struct.pack("!I", sqn)
+            # vector = random.randbytes(8)
 
-            aad = spi_resp + struct.pack("!I", sqn)
-            vector = random.randbytes(8)
+            # data_to_encrypt = packet
 
-            data_to_encrypt = packet
+            # res = (len(data_to_encrypt) + 2) % 4
+            # if res == 0:
+            #     data_to_encrypt += bytes([res]) + bytes([packet_type])
+            # else:
+            #     data_to_encrypt += self.esp_padding(4 - res) + bytes([4 - res]) + bytes([packet_type])
 
-            res = (len(data_to_encrypt) + 2) % 4
-            if res == 0:
-                data_to_encrypt += bytes([res]) + bytes([packet_type])
-            else:
-                data_to_encrypt += self.esp_padding(4 - res) + bytes([4 - res]) + bytes([packet_type])
+            # cipher = AES.new(encr_key[:-4], AES.MODE_GCM, nonce=encr_key[-4:] + vector, mac_len=mac_length)
+            # cipher.update(aad)
 
-            cipher = AES.new(encr_key[:-4], AES.MODE_GCM, nonce=encr_key[-4:] + vector, mac_len=mac_length)
-            cipher.update(aad)
+            # cipher_data, tag = cipher.encrypt_and_digest(data_to_encrypt)
 
-            cipher_data, tag = cipher.encrypt_and_digest(data_to_encrypt)
+            # new_ike_packet = spi_resp + struct.pack("!I", sqn) + vector + cipher_data + tag
 
-            new_ike_packet = spi_resp + struct.pack("!I", sqn) + vector + cipher_data + tag
-
-            return new_ike_packet
+            # return new_ike_packet
 
         elif encr_alg in (ENCR_NULL,):
 
@@ -1154,24 +1152,25 @@ class swu:
             return uncipher_packet
 
         elif encr_alg in (ENCR_AES_GCM_8, ENCR_AES_GCM_12, ENCR_AES_GCM_16):
-            if encr_alg == ENCR_AES_GCM_8:
-                mac_length = 8
-            if encr_alg == ENCR_AES_GCM_12:
-                mac_length = 12
-            if encr_alg == ENCR_AES_GCM_16:
-                mac_length = 16
-            else:
-                assert False, "unreachable"
+            raise Exception("AES GCM not implemented")
+            # if encr_alg == ENCR_AES_GCM_8:
+            #     mac_length = 8
+            # if encr_alg == ENCR_AES_GCM_12:
+            #     mac_length = 12
+            # if encr_alg == ENCR_AES_GCM_16:
+            #     mac_length = 16
+            # else:
+            #     assert False, "unreachable"
 
-            aad = packet[0:8]
-            cipher = AES.new(encr_key[:-4], AES.MODE_GCM, nonce=encr_key[-4:] + packet[8:16], mac_len=mac_length)
-            cipher.update(aad)
+            # aad = packet[0:8]
+            # cipher = AES.new(encr_key[:-4], AES.MODE_GCM, nonce=encr_key[-4:] + packet[8:16], mac_len=mac_length)
+            # cipher.update(aad)
 
-            uncipher_data = cipher.decrypt_and_verify(packet[16:-mac_length], packet[-mac_length:])
-            padding_length = uncipher_data[-2]
-            uncipher_packet = uncipher_data[0 : -padding_length - 2]
+            # uncipher_data = cipher.decrypt_and_verify(packet[16:-mac_length], packet[-mac_length:])
+            # padding_length = uncipher_data[-2]
+            # uncipher_packet = uncipher_data[0 : -padding_length - 2]
 
-            return uncipher_packet
+            # return uncipher_packet
 
         elif encr_alg in (ENCR_NULL,):
             hash_size = self.integ_key_truncated_len_bytes[integ_alg]
