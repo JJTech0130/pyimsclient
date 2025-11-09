@@ -6,6 +6,7 @@ import sys
 import os
 
 import multiprocessing
+import threading
 import requests
 
 from binascii import hexlify, unhexlify
@@ -16,13 +17,6 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
 import ipsec.eap
 from ._const import *
-
-
-# if this is runtime and not type checking, replace mutliprocessing with multiprocess
-# this is to fix a bug: cannot pickle 'cryptography.hazmat.primitives.asymmetric.dh.DHParameterNumbers' object
-from typing import TYPE_CHECKING
-if not TYPE_CHECKING:
-    import multiprocess as multiprocessing
 
 """
 
@@ -2260,9 +2254,11 @@ class swu:
         self.ike_to_ipsec_encoder, self.ipsec_encoder_to_ike = multiprocessing.Pipe()
         self.ike_to_ipsec_decoder, self.ipsec_decoder_to_ike = multiprocessing.Pipe()
 
-        ipsec_input_worker = multiprocessing.Process(target=self.encapsulate_ipsec, args=([self.ipsec_encoder_to_ike],))
+        ipsec_input_worker = threading.Thread(target=self.encapsulate_ipsec, args=([self.ipsec_encoder_to_ike],))
+        ipsec_input_worker.daemon = True
         ipsec_input_worker.start()
-        ipsec_output_worker = multiprocessing.Process(target=self.decapsulate_ipsec, args=([self.ipsec_decoder_to_ike],))
+        ipsec_output_worker = threading.Thread(target=self.decapsulate_ipsec, args=([self.ipsec_decoder_to_ike],))
+        ipsec_output_worker.daemon = True
         ipsec_output_worker.start()
 
         inter_process_list_start_encoder = [
