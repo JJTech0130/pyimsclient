@@ -7,11 +7,12 @@ import base64
 import random
 
 # ---- Configuration ----
-LOCAL_IPV6 = "2600:380:8b9f:30a:0:46:bca:b301"   # change if you need to use a different local IPv6
-PCSCF_IPV6 = "2001:1890:1f8:216e::1:2"
+LOCAL_IPV6 = "2600:380:a5c3:8a9a:0:68:a3b2:ec01"   # change if you need to use a different local IPv6
+PCSCF_IPV6 = "2001:1890:1f8:20cd::1:2"
 IMSI = "310280197204423"
 IMEI = "356303489086965"
 REALM = "one.att.net"
+USERNAME = IMSI + "@private.att.net"
 #LOCAL_PORT = 5060    # local UDP port we bind to
 SOCKET_TIMEOUT = 5.0 # seconds to wait for responses
 
@@ -117,9 +118,9 @@ def create_sip_register_request():
         f"Geolocation: <cid:{IMSI}@{REALM}>",
         f"Geolocation-Routing: yes",
         f"Contact: <sip:[{LOCAL_IPV6}]:5060>;+g.3gpp.icsi-ref=\"urn%3Aurn-7%3A3gpp-service.ims.icsi.mmtel\";+g.3gpp.smsip;+sip.instance=\"<urn:gsma:imei:{IMEI}>\";text",
-        f"Authorization: Digest nonce=\"\",uri=\"sip:{REALM}\",realm=\"{REALM}\",username=\"{IMSI}@private.att.net\",response=\"\"",
+        f'Authorization: Digest nonce="",uri="sip:{REALM}",realm="{REALM}",username="{USERNAME}",response=""',
         f"CSeq: 1 REGISTER",
-        f"Via: SIP/2.0/TCP [{LOCAL_IPV6}]:5060;branch={branch};rport",
+        f"Via: SIP/2.0/UDP [{LOCAL_IPV6}]:5060;branch={branch};rport",
         f"Allow: ACK,BYE,CANCEL,INFO,INVITE,MESSAGE,NOTIFY,OPTIONS,PRACK,REFER,UPDATE",
         f"Max-Forwards: 70",
         f"Supported: 100rel,path,replaces",
@@ -156,7 +157,7 @@ def create_sip_register_request():
 
 # ---- Main flow ----
 def main():
-    sock = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+    sock = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
     #sock.bind((LOCAL_IPV6, 5060))
     bind_socket_to_iface(sock, "utun8")
     sock.settimeout(SOCKET_TIMEOUT)
