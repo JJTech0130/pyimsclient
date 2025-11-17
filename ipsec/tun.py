@@ -70,7 +70,8 @@ class TunLinux(Tun):
         if ipv6:
             subprocess.run(["/sbin/ip", "-6", "addr", "add", addr, "dev", self._ifname])
             # Hack: IPv6 won't work on the tunnel interface without a default route, use a high metric to avoid interfering with normal routing
-            subprocess.run(["/sbin/ip", "-6", "route", "add", "default", "dev", self._ifname, "metric", "20000"])
+            # (add utun suffix to avoid conflicts if multiple tunnels are used)
+            subprocess.run(["/sbin/ip", "-6", "route", "add", "default", "dev", self._ifname, "metric", "2000" + self._ifname[4:]])
         else:
             subprocess.run(["/sbin/ip", "-4", "addr", "add", addr, "dev", self._ifname])
 
